@@ -367,8 +367,6 @@ export default function App() {
     setQuickGender('Male');
     setQuickYears(25);
     setQuickUseFirstNameOnly(true);
-    
-    setShowGreetingModal(true);
   };
 
   // Trigger on-demand generation inside modal
@@ -417,13 +415,15 @@ export default function App() {
   };
 
   // Regenerate/Update Greeting (both modes)
-  const handleRegenerateGreeting = async (tone = greetingTone, customText = customGreetingDetails) => {
-    if (isQuickMode) {
-      // For quick mode, regenerate using the input fields
-      if (!quickFirstName.trim()) return;
-      setIsGenerating(true);
+  const handleRegenerateGreeting = async (
+    tone = greetingTone,
+    customText = customGreetingDetails,
+    person = greetingPerson
+  ) => {
+    if (!person) {
+      // If no person, we are in Quick Mode, construct a mock person
       const mockBirthYear = new Date().getFullYear() - quickYears;
-      const mockPerson: Person = {
+      person = {
         id: 'quick-demand-mock',
         firstName: quickFirstName,
         lastName: quickLastName || undefined,
@@ -437,26 +437,16 @@ export default function App() {
         recurrence: 'once',
         useFirstNameOnly: quickUseFirstNameOnly
       };
-      try {
-        const generated = await generateHebrewBirthdayGreeting(mockPerson, tone, customText, settings.geminiApiKey);
-        setGreetingText(generated);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsGenerating(false);
-      }
-    } else {
-      // Stored person regeneration
-      if (!greetingPerson) return;
-      setIsGenerating(true);
-      try {
-        const generated = await generateHebrewBirthdayGreeting(greetingPerson, tone, customText, settings.geminiApiKey);
-        setGreetingText(generated);
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsGenerating(false);
-      }
+    }
+
+    setIsGenerating(true);
+    try {
+      const generated = await generateHebrewBirthdayGreeting(person, tone, customText, settings.geminiApiKey);
+      setGreetingText(generated);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsGenerating(false);
     }
   };
 
