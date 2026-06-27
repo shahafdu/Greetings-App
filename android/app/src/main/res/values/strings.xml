@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Greetings</string>
+    <string name="title_activity_main">Greetings</string>
+    <string name="package_name">com.shahaf.greetings</string>
+    <string name="custom_url_scheme">com.shahaf.greetings</string>
+</resources>

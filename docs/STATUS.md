@@ -33,9 +33,11 @@ The **web app is feature-complete and stable** for the web/Windows phase. Next m
 - **APK packaging** — Capacitor not yet added (install was interrupted at the end of the last session).
 
 ## Android adaptation plan (TODO)
-- [ ] **Phase 1 — Capacitor scaffold**: install `@capacitor/{core,cli,android}`, `cap init`
-      (app id e.g. `com.shahaf.greetings`, webDir `dist`), `cap add android`. Owner builds the APK
-      in Android Studio (needs Android SDK installed — owner to confirm/setup).
+- [x] **Phase 1 — Capacitor scaffold** ✅ (2026-06-28): Capacitor 8.4.1 installed; `cap init`
+      (appId `com.shahaf.greetings`, appName "Greetings", webDir `dist`); `android/` project created;
+      app icon + splash generated from `assets/icon.png` (1024×1024) via `@capacitor/assets`.
+      Scripts: `npm run android:sync` (build + sync), `android:open`, `android:icons`.
+      **NEXT for owner**: install Android Studio + SDK, then `npm run android:open` → Build/Run the APK.
 - [ ] **Phase 2 — native features** (one at a time, owner tests each on device):
   - [ ] Local notifications (`@capacitor/local-notifications`) — real reminders from per-event settings.
   - [ ] Native contacts (community plugin) + runtime permission.

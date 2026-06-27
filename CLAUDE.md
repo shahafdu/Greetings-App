@@ -17,6 +17,16 @@ npm run lint     # eslint (optional)
 ```
 There are **no automated tests**. Verify by building + manual check in the browser.
 
+**Android (Capacitor, scaffolded 2026-06-28):**
+```bash
+npm run android:sync   # build web + copy into the android/ project (run after web changes)
+npm run android:open   # open the project in Android Studio (owner builds/runs the APK there)
+npm run android:icons  # regenerate launcher icons/splash from assets/icon.png (1024x1024)
+```
+App id `com.shahaf.greetings`. Building the APK needs **Android Studio + SDK** (owner's machine).
+`npm install` of Capacitor packages floods output and can crash the Bash tool — run such installs
+with `run_in_background: true`.
+
 ## Architecture / key files
 - `src/App.tsx` — the whole UI (large single component). Tabs: **אנשי קשר** (list + add/edit form),
   **לוח שנה** (calendar with Google-event overlay), **מחולל מהיר** (quick generator), **הגדרות** (settings).
