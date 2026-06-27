@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { useGoogleLogin } from '@react-oauth/google';
 import {
   Calendar as CalendarIcon,
   Users,
@@ -35,12 +36,25 @@ import {
   getDaysToEvent,
   isEventToday,
   getOccasionEmoji,
+  getGenderLabel,
+  getRelationCategory,
   isCloseRelation,
   OCCASIONS,
-  RELATIONS
+  RELATIONS,
+  GEMINI_MODELS,
+  DEFAULT_GEMINI_MODEL,
+  GROQ_MODELS,
+  DEFAULT_GROQ_MODEL
 } from './services/storage';
+import type { AiProvider } from './services/storage';
 
-import { generateHebrewBirthdayGreeting } from './services/gemini';
+import { generateHebrewBirthdayGreeting, testAiApiKey } from './services/gemini';
+import {
+  fetchGoogleContacts,
+  fetchGoogleCalendarEvents,
+  GoogleApiError
+} from './services/google';
+import type { GoogleContact, GoogleCalendarEvent } from './services/google';
 
 const HEBREW_MONTHS = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -49,20 +63,18 @@ const HEBREW_MONTHS = [
 
 const WEEKDAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
-const MOCK_PHONE_CONTACTS = [
-  { firstName: 'דניאל', lastName: 'אביב', phone: '054-9988776', gender: 'Male' as const },
-  { firstName: 'רוני', lastName: 'אלבז', phone: '050-8877665', gender: 'Female' as const },
-  { firstName: 'עידן', lastName: 'לוי', phone: '052-1122334', gender: 'Male' as const },
-  { firstName: 'שרון', lastName: 'מועלם', phone: '053-4433221', gender: 'Female' as const },
-  { firstName: 'טל', lastName: 'רפאל', phone: '058-7766554', gender: 'Male' as const }
-];
-
-const MOCK_CALENDAR_EVENTS = [
-  { firstName: 'אמא ואבא', lastName: '', date: '1990-06-28', occasion: 'יום נישואין' as const, relation: 'הורה', gender: 'Female' as const },
-  { firstName: 'עידו', lastName: 'כרמי', date: '2001-07-05', occasion: 'סיום לימודים' as const, relation: 'חבר', gender: 'Male' as const },
-  { firstName: 'לירז', lastName: 'שדה', date: '1996-07-12', occasion: 'מעבר דירה' as const, relation: 'קולגה', gender: 'Female' as const },
-  { firstName: 'עופר', lastName: 'יונה', date: '1992-06-18', occasion: 'קידום בעבודה' as const, relation: 'חבר קרוב', gender: 'Male' as const }
-];
+// Best-effort guess of an occasion type from a free-text calendar event title.
+const guessOccasion = (title: string): Person['occasion'] => {
+  const t = title.toLowerCase();
+  if (t.includes('יום הולדת') || t.includes('birthday') || t.includes('🎂')) return 'יום הולדת';
+  if (t.includes('נישואין') || t.includes('anniversary')) return 'יום נישואין';
+  if (t.includes('סיום') || t.includes('graduation')) return 'סיום לימודים';
+  if (t.includes('תינוק') || t.includes('baby') || t.includes('לידה')) return 'הולדת תינוק/ת';
+  if (t.includes('דירה') || t.includes('בית חדש')) return 'מעבר דירה';
+  if (t.includes('חג') || t.includes('holiday')) return 'חג שמח';
+  if (t.includes('גיוס') || t.includes('שחרור')) return 'גיוס / שחרור';
+  return 'אחר';
+};
 
 export default function App() {
   // App navigation
@@ -72,7 +84,12 @@ export default function App() {
   
   // Settings & Google Auth
   const [settings, setLocalSettings] = useState<AppSettings>({
+    aiProvider: 'gemini',
     geminiApiKey: '',
+    geminiModel: DEFAULT_GEMINI_MODEL,
+    groqApiKey: '',
+    groqModel: DEFAULT_GROQ_MODEL,
+    senderGender: 'Male',
     useGoogleAuth: false,
     defaultNotifyHour: '09:00',
     defaultNotifyDaysBefore: 0
@@ -88,7 +105,7 @@ export default function App() {
   const [formDate, setFormDate] = useState('');
   const [formOccasion, setFormOccasion] = useState<Person['occasion']>('יום הולדת');
   const [formRelation, setFormRelation] = useState('חבר/ה');
-  const [formGender, setFormGender] = useState<'Male' | 'Female'>('Male');
+  const [formGender, setFormGender] = useState<Person['gender']>('Male');
   const [formPhone, setFormPhone] = useState('');
   const [formNotes, setFormNotes] = useState('');
   const [formNotifyDays, setFormNotifyDays] = useState(0);
@@ -109,6 +126,7 @@ export default function App() {
   const [greetingTone, setGreetingTone] = useState<'normal' | 'funny' | 'emotional' | 'short'>('normal');
   const [customGreetingDetails, setCustomGreetingDetails] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [greetingError, setGreetingError] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
 
   // On-Demand Quick Generator Mode State (Feature 2)
@@ -117,16 +135,34 @@ export default function App() {
   const [quickLastName, setQuickLastName] = useState('');
   const [quickOccasion, setQuickOccasion] = useState<Person['occasion']>('יום הולדת');
   const [quickRelation, setQuickRelation] = useState('חבר/ה');
-  const [quickGender, setQuickGender] = useState<'Male' | 'Female'>('Male');
+  const [quickGender, setQuickGender] = useState<Person['gender']>('Male');
   const [quickYears, setQuickYears] = useState(25);
   const [quickUseFirstNameOnly, setQuickUseFirstNameOnly] = useState(true);
 
-  // Contacts picker modal state
-  const [showContactsModal, setShowContactsModal] = useState(false);
+  // Google OAuth access token (short-lived; kept in memory + sessionStorage for the session)
+  const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
 
-  // Calendar Sync modal state
-  const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const [calendarSyncList, setCalendarSyncList] = useState(MOCK_CALENDAR_EVENTS);
+  // Contacts picker modal state (real Google Contacts via People API)
+  const [showContactsModal, setShowContactsModal] = useState(false);
+  const [googleContacts, setGoogleContacts] = useState<GoogleContact[]>([]);
+  const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsError, setContactsError] = useState('');
+  const [contactsSearch, setContactsSearch] = useState('');
+  // Where a picked contact's details are filled in: the add-event form or the quick generator.
+  const [contactsTarget, setContactsTarget] = useState<'form' | 'quick'>('form');
+
+  // Measured height of the sticky top bar, exposed as a CSS var for sticky offsets.
+  const headerRef = useRef<HTMLElement>(null);
+
+  // Calendar Sync state (real Google Calendar via Calendar API; shown on the calendar grid)
+  const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
+  const [importedEventIds, setImportedEventIds] = useState<string[]>([]);
+  const [calendarLoading, setCalendarLoading] = useState(false);
+  const [calendarError, setCalendarError] = useState('');
+
+  // Gemini key-test state (Settings)
+  const [keyTestStatus, setKeyTestStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
+  const [keyTestError, setKeyTestError] = useState('');
 
   // Simulated Push Notification toast state
   const [toastNotification, setToastNotification] = useState<{
@@ -144,23 +180,33 @@ export default function App() {
   // Load initial data
   useEffect(() => {
     refreshPeopleList();
-    const saved = getSettings();
-    setLocalSettings(saved);
-    
-    if (localStorage.getItem('birthday_greetings_google_auth_active') === 'true') {
-      setLocalSettings(prev => ({
-        ...prev,
-        useGoogleAuth: true,
-        googleUserName: 'ישראל ישראלי',
-        googleUserEmail: 'israel.israeli@gmail.com'
-      }));
-    }
+    setLocalSettings(getSettings());
 
+    // Restore the OAuth access token for this browser session (tokens are short-lived
+    // and not persisted to localStorage for security).
+    const savedToken = sessionStorage.getItem('birthday_greetings_google_token');
+    if (savedToken) setGoogleAccessToken(savedToken);
+
+    // Only surface an automatic push notification when there is a genuine event today.
     const timer = setTimeout(() => {
-      triggerDemoNotification();
+      if (getPeople().some(p => isEventToday(p))) {
+        triggerDemoNotification();
+      }
     }, 4000);
 
     return () => clearTimeout(timer);
+  }, []);
+
+  // Track the sticky top bar's height so sticky offsets (sidebar form, list header) align.
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el) return;
+    const setVar = () => document.documentElement.style.setProperty('--app-header-h', `${el.offsetHeight}px`);
+    setVar();
+    const ro = new ResizeObserver(setVar);
+    ro.observe(el);
+    window.addEventListener('resize', setVar);
+    return () => { ro.disconnect(); window.removeEventListener('resize', setVar); };
   }, []);
 
   // Play chimes
@@ -221,20 +267,47 @@ export default function App() {
   };
 
   // Google Login Auth Trigger
-  const handleGoogleLogin = () => {
-    setIsLoggingIn(true);
-    setTimeout(() => {
-      const updatedSettings = {
-        ...settings,
-        useGoogleAuth: true,
-        googleUserName: 'ישראל ישראלי',
-        googleUserEmail: 'israel.israeli@gmail.com'
-      };
-      setLocalSettings(updatedSettings);
-      saveSettings(updatedSettings);
-      localStorage.setItem('birthday_greetings_google_auth_active', 'true');
+  const login = useGoogleLogin({
+    onSuccess: async (tokenResponse) => {
+      // Note: never log tokenResponse — it contains the access token.
+      // Fetch user profile from Google
+      try {
+        const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+        });
+        const userInfo = await userInfoResponse.json();
+
+        // Persist the access token for this session so we can call Calendar/People APIs.
+        setGoogleAccessToken(tokenResponse.access_token);
+        sessionStorage.setItem('birthday_greetings_google_token', tokenResponse.access_token);
+
+        const updatedSettings = {
+          ...settings,
+          useGoogleAuth: true,
+          googleUserName: userInfo.name,
+          googleUserEmail: userInfo.email
+        };
+        setLocalSettings(updatedSettings);
+        saveSettings(updatedSettings);
+        localStorage.setItem('birthday_greetings_google_auth_active', 'true');
+        setIsLoggingIn(false);
+      } catch (err) {
+        console.error('Failed to fetch user info:', err);
+        setIsLoggingIn(false);
+      }
+    },
+    onError: () => {
+      console.log('Login Failed');
       setIsLoggingIn(false);
-    }, 1000);
+    },
+    scope: 'https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly'
+  });
+
+  const handleGoogleLogin = () => {
+    // Always allow (re-)login: the OAuth token is short-lived, so reconnecting is how
+    // the user refreshes an expired session.
+    setIsLoggingIn(true);
+    login();
   };
 
   // Google Sign-Out
@@ -248,6 +321,105 @@ export default function App() {
     setLocalSettings(updatedSettings);
     saveSettings(updatedSettings);
     localStorage.removeItem('birthday_greetings_google_auth_active');
+    setGoogleAccessToken(null);
+    sessionStorage.removeItem('birthday_greetings_google_token');
+  };
+
+  // Shared handler: surface a Google API error, dropping an expired token so the UI
+  // can prompt a reconnect.
+  const handleGoogleApiError = (err: unknown, setError: (msg: string) => void) => {
+    if (err instanceof GoogleApiError) {
+      if (err.status === 401) {
+        setGoogleAccessToken(null);
+        sessionStorage.removeItem('birthday_greetings_google_token');
+      }
+      setError(err.message);
+    } else {
+      console.error(err);
+      setError('שגיאה בלתי צפויה בעת טעינת הנתונים מגוגל.');
+    }
+  };
+
+  // Fetch contacts once and cache them (used both by the picker and for auto-matching
+  // a phone number to a calendar event). Returns the freshly fetched list.
+  const ensureContactsLoaded = async (): Promise<GoogleContact[]> => {
+    if (!googleAccessToken) return [];
+    if (googleContacts.length > 0) return googleContacts;
+    const list = await fetchGoogleContacts(googleAccessToken);
+    setGoogleContacts(list);
+    return list;
+  };
+
+  // Open the contacts picker and fetch real Google Contacts.
+  // `target` decides whether a pick fills the add-event form or the quick generator.
+  const openContactsModal = async (target: 'form' | 'quick' = 'form') => {
+    setContactsTarget(target);
+    setShowContactsModal(true);
+    setContactsError('');
+    setContactsSearch('');
+    if (!googleAccessToken) {
+      setContactsError('not-connected');
+      return;
+    }
+    setContactsLoading(true);
+    try {
+      setGoogleContacts(await fetchGoogleContacts(googleAccessToken));
+    } catch (err) {
+      handleGoogleApiError(err, setContactsError);
+    } finally {
+      setContactsLoading(false);
+    }
+  };
+
+  // Fetch Google Calendar events (and contacts, for phone auto-linking) into state so they
+  // can be shown directly on the calendar grid. No modal — events appear as importable chips.
+  const syncGoogleCalendar = async () => {
+    setCalendarError('');
+    if (!googleAccessToken) {
+      setCalendarError('not-connected');
+      return;
+    }
+    setCalendarLoading(true);
+    try {
+      const [events] = await Promise.all([
+        fetchGoogleCalendarEvents(googleAccessToken),
+        ensureContactsLoaded().catch(() => [])
+      ]);
+      setGoogleEvents(events);
+    } catch (err) {
+      handleGoogleApiError(err, setCalendarError);
+    } finally {
+      setCalendarLoading(false);
+    }
+  };
+
+  // Trigger from the add-event form: jump to the calendar tab and sync.
+  const handleOpenCalendarSync = () => {
+    setActiveTab('calendar');
+    syncGoogleCalendar();
+  };
+
+  // Find a contact whose name appears in a calendar event title, to attach their phone.
+  const matchContactForEvent = (title: string): GoogleContact | undefined => {
+    const t = title.toLowerCase();
+    return googleContacts.find(c => {
+      const first = c.firstName?.toLowerCase().trim();
+      const full = `${c.firstName} ${c.lastName || ''}`.toLowerCase().trim();
+      return (!!first && t.includes(first)) || (!!full && t.includes(full));
+    });
+  };
+
+  // Validate the user's own Gemini API key from Settings.
+  const handleTestGeminiKey = async () => {
+    setKeyTestStatus('testing');
+    setKeyTestError('');
+    const result = await testAiApiKey(settings);
+    if (result.ok) {
+      setKeyTestStatus('valid');
+    } else {
+      setKeyTestStatus('invalid');
+      setKeyTestError(result.error || '');
+    }
   };
 
   // Settings Save
@@ -258,35 +430,9 @@ export default function App() {
     setTimeout(() => setSaveStatus('idle'), 3000);
   };
 
-  // Form Submit (Add / Edit)
-  const handleSubmitPerson = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formFirstName.trim() || !formDate) return;
-
-    const personData = {
-      firstName: formFirstName,
-      lastName: formLastName ? formLastName : undefined,
-      eventDate: formDate,
-      occasion: formOccasion,
-      relation: formRelation,
-      gender: formGender,
-      phone: formPhone || undefined,
-      notes: formNotes || undefined,
-      notifyDaysBefore: formNotifyDays,
-      notifyHour: formNotifyHour,
-      isRecurring: formIsRecurring,
-      recurrence: formIsRecurring ? formRecurrence : 'once',
-      useFirstNameOnly: formUseFirstNameOnly
-    };
-
-    if (editingPerson) {
-      updatePerson({ ...personData, id: editingPerson.id });
-      setEditingPerson(null);
-    } else {
-      addPerson(personData);
-    }
-
-    // Reset Form
+  // Reset the add/edit form back to a blank "new event" state.
+  const resetForm = () => {
+    setEditingPerson(null);
     setFormFirstName('');
     setFormLastName('');
     setFormDate('');
@@ -300,7 +446,43 @@ export default function App() {
     setFormIsRecurring(true);
     setFormRecurrence('yearly');
     setFormUseFirstNameOnly(true);
-    
+  };
+
+  // Start a fresh event from the list (no need to save the current one first).
+  const handleNewEvent = () => {
+    resetForm();
+    setActiveTab('list');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Form Submit (Add / Edit)
+  const handleSubmitPerson = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formFirstName.trim() || !formDate) return;
+
+    const personData = {
+      firstName: formFirstName,
+      lastName: formLastName ? formLastName : undefined,
+      eventDate: formDate,
+      occasion: formOccasion.trim() || 'אחר',
+      relation: formRelation.trim() || 'אחר',
+      gender: formGender,
+      phone: formPhone || undefined,
+      notes: formNotes || undefined,
+      notifyDaysBefore: formNotifyDays,
+      notifyHour: formNotifyHour,
+      isRecurring: formIsRecurring,
+      recurrence: formIsRecurring ? formRecurrence : 'once',
+      useFirstNameOnly: formUseFirstNameOnly
+    };
+
+    if (editingPerson) {
+      updatePerson({ ...personData, id: editingPerson.id });
+    } else {
+      addPerson(personData);
+    }
+
+    resetForm();
     refreshPeopleList();
   };
 
@@ -338,12 +520,14 @@ export default function App() {
     setGreetingTone('normal');
     setCustomGreetingDetails('');
     setGreetingText('');
+    setGreetingError('');
     setShowGreetingModal(true);
     setIsGenerating(true);
-    
+
     try {
-      const generated = await generateHebrewBirthdayGreeting(person, 'normal', '', settings.geminiApiKey);
-      setGreetingText(generated);
+      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings);
+      setGreetingText(text);
+      setGreetingError(error || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -351,22 +535,14 @@ export default function App() {
     }
   };
 
-  // Open Quick Generator Modal (On-Demand / Feature 2)
+  // Switch to the Quick Generator tab, clearing any leftover stored-person context
+  // so tone/regenerate buttons operate on the quick-form fields and not a previous person.
   const handleOpenQuickGenerator = () => {
-    setActiveTab("quick-generate");
+    setActiveTab('quick-generate');
+    setIsQuickMode(false);
     setGreetingPerson(null);
     setGreetingText('');
-    setGreetingTone('normal');
-    setCustomGreetingDetails('');
-    
-    // Default values
-    setQuickFirstName('');
-    setQuickLastName('');
-    setQuickOccasion('יום הולדת');
-    setQuickRelation('חבר/ה');
-    setQuickGender('Male');
-    setQuickYears(25);
-    setQuickUseFirstNameOnly(true);
+    setGreetingError('');
   };
 
   // Trigger on-demand generation inside modal
@@ -378,11 +554,12 @@ export default function App() {
     
     setIsGenerating(true);
     setGreetingText('');
+    setGreetingError('');
 
     // Construct a mock Person object on-the-fly
     // Years calculation helper: subtract years from today
     const mockBirthYear = new Date().getFullYear() - quickYears;
-    const mockDateStr = `${mockBirthYear}-01-01`; 
+    const mockDateStr = `${mockBirthYear}-01-01`;
 
     const mockPerson: Person = {
       id: 'quick-demand-mock',
@@ -400,13 +577,14 @@ export default function App() {
     };
 
     try {
-      const generated = await generateHebrewBirthdayGreeting(
+      const { text, error } = await generateHebrewBirthdayGreeting(
         mockPerson,
         greetingTone,
         customGreetingDetails,
-        settings.geminiApiKey
+        settings
       );
-      setGreetingText(generated);
+      setGreetingText(text);
+      setGreetingError(error || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -441,8 +619,9 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      const generated = await generateHebrewBirthdayGreeting(person, tone, customText, settings.geminiApiKey);
-      setGreetingText(generated);
+      const { text, error } = await generateHebrewBirthdayGreeting(person, tone, customText, settings);
+      setGreetingText(text);
+      setGreetingError(error || '');
     } catch (err) {
       console.error(err);
     } finally {
@@ -476,32 +655,53 @@ export default function App() {
     window.open(whatsappUrl, '_blank');
   };
 
-  // Native Contacts Select Simulation
-  const handleSelectMockContact = (c: typeof MOCK_PHONE_CONTACTS[0]) => {
-    setFormFirstName(c.firstName);
-    setFormLastName(c.lastName);
-    setFormPhone(c.phone);
-    setFormGender(c.gender);
+  // Attach a real Google contact. In the quick generator it fills the quick fields;
+  // in the add-event form it fills phone/gender/birthday (and name only when empty,
+  // so it can "connect a phone" to a calendar-imported event without overwriting it).
+  const handleSelectGoogleContact = (c: GoogleContact) => {
+    if (contactsTarget === 'quick') {
+      setQuickFirstName(c.firstName);
+      setQuickLastName(c.lastName || '');
+      if (c.gender) setQuickGender(c.gender);
+      if (c.birthday) setQuickYears(calculateYears(c.birthday));
+      setShowContactsModal(false);
+      return;
+    }
+    if (!formFirstName.trim()) {
+      setFormFirstName(c.firstName);
+      setFormLastName(c.lastName || '');
+    }
+    if (c.phone) setFormPhone(c.phone);
+    if (c.gender) setFormGender(c.gender);
+    if (c.birthday && !formDate) {
+      setFormDate(c.birthday);
+      setFormOccasion('יום הולדת');
+      setFormIsRecurring(true);
+      setFormRecurrence('yearly');
+    }
     setShowContactsModal(false);
   };
 
-  // Calendar Sync Simulation
-  const handleImportCalendarEvent = (event: typeof MOCK_CALENDAR_EVENTS[0], idx: number) => {
+  // Import a real Google Calendar event, auto-linking a matching contact's phone/gender
+  // so the event is ready to send on WhatsApp (calendar has the date, contacts have the number).
+  const handleImportGoogleEvent = (event: GoogleCalendarEvent) => {
+    const occasion = guessOccasion(event.title);
+    const recurring = ['יום הולדת', 'יום נישואין', 'חג שמח'].includes(occasion);
+    const match = matchContactForEvent(event.title);
     addPerson({
-      firstName: event.firstName,
-      lastName: event.lastName || undefined,
+      firstName: event.title,
       eventDate: event.date,
-      occasion: event.occasion,
-      relation: event.relation,
-      gender: event.gender,
+      occasion,
+      relation: 'חבר/ה',
+      gender: match?.gender || 'Male',
+      phone: match?.phone,
       notifyDaysBefore: 0,
       notifyHour: '09:00',
-      isRecurring: ['יום הולדת', 'יום נישואין', 'חג שמח'].includes(event.occasion),
-      recurrence: ['יום הולדת', 'יום נישואין', 'חג שמח'].includes(event.occasion) ? 'yearly' : 'once',
-      useFirstNameOnly: isCloseRelation(event.relation)
+      isRecurring: recurring,
+      recurrence: recurring ? 'yearly' : 'once',
+      useFirstNameOnly: false
     });
-    
-    setCalendarSyncList(prev => prev.filter((_, i) => i !== idx));
+    setImportedEventIds(prev => [...prev, event.id]);
     refreshPeopleList();
   };
 
@@ -606,9 +806,16 @@ export default function App() {
         return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
       });
 
-      const isCellToday = 
-        cell.day === todayDate.getDate() && 
-        cell.month === todayDate.getMonth() && 
+      // Pending (not-yet-imported) Google Calendar events that fall on this cell's date.
+      const cellGoogleEvents = googleEvents.filter(e => {
+        if (importedEventIds.includes(e.id)) return false;
+        const [y, m, d] = e.date.split('-').map(Number);
+        return y === cell.year && (m - 1) === cell.month && d === cell.day;
+      });
+
+      const isCellToday =
+        cell.day === todayDate.getDate() &&
+        cell.month === todayDate.getMonth() &&
         cell.year === todayDate.getFullYear();
 
       return (
@@ -619,24 +826,29 @@ export default function App() {
             if (cell.isCurrentMonth) {
               const formattedMonth = String(cell.month + 1).padStart(2, '0');
               const formattedDay = String(cell.day).padStart(2, '0');
-              setFormDate(`${calendarYear - 20}-${formattedMonth}-${formattedDay}`);
+              setFormDate(`${cell.year}-${formattedMonth}-${formattedDay}`);
               setActiveTab('list');
             }
           }}
         >
           <span className="calendar-day-number">{cell.day}</span>
           <div className="calendar-birthdays-container">
-            {cellEvents.map(p => {
-              let relationClass = 'friend';
-              if (p.relation.includes('זוג') || p.relation.includes('Spouse')) relationClass = 'spouse';
-              if (p.relation.includes('אח') || p.relation.includes('אחות') || p.relation.includes('ילד') || p.relation.includes('הורה')) relationClass = 'family';
-              
-              return (
-                <div key={p.id} className={`calendar-birthday-dot ${relationClass}`} title={`${p.firstName} (${p.occasion} - ${p.relation})`}>
-                  {getOccasionEmoji(p.occasion)} {p.firstName}
-                </div>
-              );
-            })}
+            {cellEvents.map(p => (
+              <div key={p.id} className={`calendar-birthday-dot ${getRelationCategory(p.relation)}`} title={`${p.firstName} (${p.occasion} - ${p.relation})`}>
+                {getOccasionEmoji(p.occasion)} {p.firstName}
+              </div>
+            ))}
+            {cellGoogleEvents.map(e => (
+              <div
+                key={e.id}
+                className="calendar-birthday-dot"
+                style={{ border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)', cursor: 'pointer' }}
+                title={`לחץ/י לייבוא מיומן Google: ${e.title}`}
+                onClick={(ev) => { ev.stopPropagation(); handleImportGoogleEvent(e); }}
+              >
+                ➕ {e.title}
+              </div>
+            ))}
           </div>
         </div>
       );
@@ -708,7 +920,7 @@ export default function App() {
       )}
 
       {/* Dynamic Header */}
-      <header className="app-header glass-card">
+      <header ref={headerRef} className="app-header glass-card">
         <div className="logo-container">
           <span className="logo-icon">🎉</span>
           <div>
@@ -735,7 +947,7 @@ export default function App() {
             <span>לוח שנה</span>
           </button>
           <button
-            onClick={() => setActiveTab("quick-generate")}
+            onClick={handleOpenQuickGenerator}
             className={`tab-btn ${activeTab === "quick-generate" ? "active" : ""}`}
             id="tab-quick-generate"
           >
@@ -792,17 +1004,29 @@ export default function App() {
           <div className="main-grid">
             {/* Sidebar Form */}
             <section className="glass-card section-panel" id="add-edit-section">
-              <h2 className="form-title" id="form-heading">
-                {editingPerson ? <Edit size={20} /> : <Plus size={20} />}
-                <span>{editingPerson ? 'עריכת אירוע' : 'הוספת אירוע'}</span>
-              </h2>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
+                <h2 className="form-title" id="form-heading" style={{ marginBottom: 0 }}>
+                  {editingPerson ? <Edit size={20} /> : <Plus size={20} />}
+                  <span>{editingPerson ? 'עריכת אירוע' : 'הוספת אירוע'}</span>
+                </h2>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleNewEvent}
+                  style={{ width: 'auto', padding: '0.4rem 0.7rem', fontSize: '0.8rem', flexShrink: 0 }}
+                  title="נקה את הטופס והתחל אירוע חדש"
+                >
+                  <Plus size={14} />
+                  <span>אירוע חדש</span>
+                </button>
+              </div>
 
               <form onSubmit={handleSubmitPerson}>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setShowContactsModal(true)}
+                    onClick={() => openContactsModal('form')}
                     style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
                   >
                     <Import size={14} />
@@ -811,7 +1035,7 @@ export default function App() {
                   <button
                     type="button"
                     className="btn btn-secondary"
-                    onClick={() => setShowCalendarModal(true)}
+                    onClick={handleOpenCalendarSync}
                     style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
                   >
                     <CalendarIcon size={14} />
@@ -851,13 +1075,23 @@ export default function App() {
                   <select
                     id="select-occasion"
                     className="form-select"
-                    value={formOccasion}
-                    onChange={(e) => setFormOccasion(e.target.value as Person['occasion'])}
+                    value={(OCCASIONS.includes(formOccasion as typeof OCCASIONS[number]) && formOccasion !== 'אחר') ? formOccasion : 'אחר'}
+                    onChange={(e) => setFormOccasion(e.target.value === 'אחר' ? '' : e.target.value)}
                   >
                     {OCCASIONS.map(o => (
-                      <option key={o} value={o}>{o}</option>
+                      <option key={o} value={o}>{o === 'אחר' ? 'אחר (טקסט חופשי)' : o}</option>
                     ))}
                   </select>
+                  {(!OCCASIONS.includes(formOccasion as typeof OCCASIONS[number]) || formOccasion === 'אחר') && (
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ marginTop: '0.5rem' }}
+                      placeholder="הקלד/י סוג אירוע מותאם אישית (למשל: בר מצווה, פרישה...)"
+                      value={formOccasion === 'אחר' ? '' : formOccasion}
+                      onChange={(e) => setFormOccasion(e.target.value)}
+                    />
+                  )}
                 </div>
 
                 <div className="form-group">
@@ -902,13 +1136,23 @@ export default function App() {
                   <select
                     id="select-relation"
                     className="form-select"
-                    value={formRelation}
-                    onChange={(e) => handleRelationChange(e.target.value)}
+                    value={(RELATIONS.includes(formRelation) && formRelation !== 'אחר') ? formRelation : 'אחר'}
+                    onChange={(e) => e.target.value === 'אחר' ? setFormRelation('') : handleRelationChange(e.target.value)}
                   >
                     {RELATIONS.map(r => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r}>{r === 'אחר' ? 'אחר (טקסט חופשי)' : r}</option>
                     ))}
                   </select>
+                  {(!RELATIONS.includes(formRelation) || formRelation === 'אחר') && (
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ marginTop: '0.5rem' }}
+                      placeholder="הקלד/י קשר מותאם אישית (למשל: מנהל/ת, מורה, בן/בת דוד שני...)"
+                      value={formRelation === 'אחר' ? '' : formRelation}
+                      onChange={(e) => setFormRelation(e.target.value)}
+                    />
+                  )}
                 </div>
 
                 {/* Feature 3: Surname omission check */}
@@ -947,7 +1191,22 @@ export default function App() {
                       />
                       <span>נקבה</span>
                     </label>
+                    <label className="gender-radio-label">
+                      <input
+                        type="radio"
+                        name="gender"
+                        className="gender-radio-input"
+                        checked={formGender === 'Couple'}
+                        onChange={() => setFormGender('Couple')}
+                      />
+                      <span>זוג / רבים</span>
+                    </label>
                   </div>
+                  {formGender === 'Couple' && (
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.35rem' }}>
+                      הברכה תנוסח בלשון רבים — מתאים לבני זוג או לקבוצה (למשל ברכת יום נישואין להורים).
+                    </p>
+                  )}
                 </div>
 
                 <div className="form-group" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
@@ -1019,22 +1278,7 @@ export default function App() {
                     <button
                       type="button"
                       className="btn btn-secondary"
-                      onClick={() => {
-                        setEditingPerson(null);
-                        setFormFirstName('');
-                        setFormLastName('');
-                        setFormDate('');
-                        setFormOccasion('יום הולדת');
-                        setFormRelation('חבר/ה');
-                        setFormGender('Male');
-                        setFormPhone('');
-                        setFormNotes('');
-                        setFormNotifyDays(0);
-                        setFormNotifyHour('09:00');
-                        setFormIsRecurring(true);
-                        setFormRecurrence('yearly');
-                        setFormUseFirstNameOnly(true);
-                      }}
+                      onClick={resetForm}
                     >
                       ביטול
                     </button>
@@ -1045,34 +1289,36 @@ export default function App() {
 
             {/* List Section */}
             <section className="glass-card section-panel" id="contacts-list-section">
-              <div className="panel-header">
-                <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>לוח אירועים מתוכננים</h2>
-                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                  <button 
-                    onClick={triggerDemoNotification}
-                    className="btn btn-secondary"
-                    style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', width: 'auto' }}
-                    title="בדוק סימולציית התראות דחיפה"
-                  >
-                    <Bell size={12} />
-                    <span>התראה 🔔</span>
-                  </button>
-                  <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }} className="numbers-font">
-                    {filteredPeople.length} מתוך {people.length}
+              <div className="list-sticky-header">
+                <div className="panel-header" style={{ marginBottom: '1rem' }}>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>לוח אירועים מתוכננים</h2>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                    <button
+                      onClick={triggerDemoNotification}
+                      className="btn btn-secondary"
+                      style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', width: 'auto' }}
+                      title="בדוק סימולציית התראות דחיפה"
+                    >
+                      <Bell size={12} />
+                      <span>התראה 🔔</span>
+                    </button>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }} className="numbers-font">
+                      {filteredPeople.length} מתוך {people.length}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              <div className="search-container">
-                <input
-                  type="text"
-                  className="form-input search-input"
-                  placeholder="חיפוש לפי שם, קשר, אירוע או הערות..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  id="search-contacts-input"
-                />
-                <Search className="search-icon" size={18} />
+                <div className="search-container" style={{ marginBottom: 0 }}>
+                  <input
+                    type="text"
+                    className="form-input search-input"
+                    placeholder="חיפוש לפי שם, קשר, אירוע או הערות..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    id="search-contacts-input"
+                  />
+                  <Search className="search-icon" size={18} />
+                </div>
               </div>
 
               <div className="people-grid" id="contacts-grid">
@@ -1100,9 +1346,7 @@ export default function App() {
                     daysBadgeText = `בעוד ${daysLeft} ימים`;
                   }
 
-                  let relationClass = 'friend';
-                  if (person.relation.includes('זוג') || person.relation.includes('Spouse')) relationClass = 'spouse';
-                  if (person.relation.includes('אח') || person.relation.includes('אחות') || person.relation.includes('ילד') || person.relation.includes('הורה')) relationClass = 'family';
+                  const relationClass = getRelationCategory(person.relation);
 
                   return (
                     <div key={person.id} className={`person-card glass-card ${relationClass}`}>
@@ -1111,7 +1355,7 @@ export default function App() {
                           <span style={{ fontSize: '1.2rem', marginRight: '2px' }}>{getOccasionEmoji(person.occasion)}</span>
                           <span>{person.firstName} {person.lastName || ''}</span>
                           <span className={`gender-badge ${person.gender === 'Female' ? 'female' : 'male'}`}>
-                            {person.gender === 'Female' ? 'נקבה' : 'זכר'}
+                            {getGenderLabel(person.gender)}
                           </span>
                         </div>
                         <span className="person-relation">{person.relation}</span>
@@ -1135,7 +1379,7 @@ export default function App() {
                       {person.phone && (
                         <div className="person-birthday-row" style={{ fontSize: '0.8rem' }}>
                           <Phone size={12} />
-                          <span className="numbers-font">{person.phone}</span>
+                          <span className="phone-number" dir="ltr">{person.phone}</span>
                         </div>
                       )}
 
@@ -1212,6 +1456,51 @@ export default function App() {
               </button>
             </div>
 
+            {/* Google Calendar sync bar */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: 'auto', fontSize: '0.85rem' }}
+                onClick={syncGoogleCalendar}
+                disabled={calendarLoading}
+              >
+                {calendarLoading ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', margin: 0 }}></div>
+                    <span>מסנכרן...</span>
+                  </div>
+                ) : (
+                  <>
+                    <CalendarIcon size={14} />
+                    <span>סנכרן אירועים מיומן Google</span>
+                  </>
+                )}
+              </button>
+              {(() => {
+                if (calendarError === 'not-connected') {
+                  return (
+                    <button type="button" className="btn btn-primary" style={{ width: 'auto', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => setActiveTab('settings')}>
+                      <LogIn size={14} />
+                      <span>התחבר/י ל-Google בהגדרות</span>
+                    </button>
+                  );
+                }
+                if (calendarError) {
+                  return <span style={{ fontSize: '0.8rem', color: 'var(--danger, #ff5c5c)' }}>{calendarError}</span>;
+                }
+                if (!calendarLoading && googleEvents.length > 0) {
+                  const pending = googleEvents.filter(e => !importedEventIds.includes(e.id)).length;
+                  return (
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+                      {pending > 0 ? `נמצאו ${pending} אירועים — לחץ/י על אירוע מקווקו בלוח כדי לייבא ➕` : 'כל האירועים יובאו 🎉'}
+                    </span>
+                  );
+                }
+                return null;
+              })()}
+            </div>
+
             <div className="calendar-days-grid">
               {WEEKDAYS.map(d => (
                 <div key={d} className="calendar-weekday-label">{d}</div>
@@ -1232,6 +1521,10 @@ export default function App() {
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--secondary)' }}></span>
                 <span>חברים ואחרים</span>
               </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '3px', border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)' }}></span>
+                <span>אירוע מ-Google (לחץ לייבוא)</span>
+              </span>
             </div>
           </section>
         )}
@@ -1247,8 +1540,19 @@ export default function App() {
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-              <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: '0.25rem' }}>פרטי מקבל הברכה:</h4>
-              
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: 0 }}>פרטי מקבל הברכה:</h4>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => openContactsModal('quick')}
+                  style={{ width: 'auto', fontSize: '0.78rem', padding: '0.35rem 0.7rem', flexShrink: 0 }}
+                >
+                  <Import size={13} />
+                  <span>ייבוא מאנשי קשר 📱</span>
+                </button>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
                   <label className="form-label" style={{ fontSize: '0.75rem' }}>שם פרטי</label>
@@ -1339,6 +1643,16 @@ export default function App() {
                     />
                     <span>נקבה</span>
                   </label>
+                  <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
+                    <input
+                      type="radio"
+                      name="quickGender"
+                      className="gender-radio-input"
+                      checked={quickGender === 'Couple'}
+                      onChange={() => setQuickGender('Couple')}
+                    />
+                    <span>זוג / רבים</span>
+                  </label>
                 </div>
 
                 <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
@@ -1369,16 +1683,24 @@ export default function App() {
               {isGenerating ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div className="spinner"></div>
-                  <span>מנסח ברכה בעברית באמצעות Gemini AI...</span>
+                  <span>מנסח ברכה בעברית...</span>
                 </div>
-              ) : greetingText ? (
-                greetingText
               ) : (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-                  מלא את הפרטים למעלה ולחץ על "ייצר ברכה"
-                </div>
+                <textarea
+                  className="greeting-edit-textarea"
+                  value={greetingText}
+                  onChange={(e) => setGreetingText(e.target.value)}
+                  placeholder='הברכה תופיע כאן וניתנת לעריכה ידנית לפני העתקה / שליחה. מלא/י את הפרטים ולחץ/י על "ייצר ברכה".'
+                  dir="rtl"
+                />
               )}
             </div>
+
+            {greetingError && !isGenerating && (
+              <div style={{ marginBottom: '1.25rem', padding: '0.6rem 0.85rem', borderRadius: '8px', background: 'rgba(255,92,92,0.08)', border: '1px solid rgba(255,92,92,0.35)', color: '#ff9b9b', fontSize: '0.78rem', lineHeight: '1.45', direction: 'rtl' }}>
+                ⚠️ {greetingError}
+              </div>
+            )}
 
             {/* Control Panel */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem' }}>
@@ -1493,7 +1815,8 @@ export default function App() {
                 <span>התחברות מאובטחת בחשבון גוגל (Google Login)</span>
               </h3>
               <p className="settings-description" style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-                במקום להזין מפתח API ידנית, מומלץ להתחבר באופן בטוח באמצעות חשבון הגוגל שלך. האפליקציה תשתמש בחיבור הגוגל שלך לניהול ברכות Gemini בבטחה.
+                התחברות עם חשבון גוגל מאפשרת לייבא אירועים מיומן Google ואנשי קשר (בהרשאתך בלבד, קריאה בלבד).
+                שים/י לב: ההתחברות אינה מספקת גישה ל-Gemini — ליצירת ברכות AI נדרש מפתח API נפרד (ראה/י למטה).
               </p>
 
               {settings.useGoogleAuth ? (
@@ -1545,38 +1868,190 @@ export default function App() {
             </div>
 
             <form onSubmit={handleSaveSettings}>
-              <div className="form-group" style={{ opacity: settings.useGoogleAuth ? 0.4 : 1, pointerEvents: settings.useGoogleAuth ? 'none' : 'auto' }}>
-                <label className="form-label" htmlFor="input-api-key">
-                  <span>מפתח API של Google Gemini</span>
-                  {settings.useGoogleAuth && <span style={{ marginRight: '8px', color: 'var(--success)' }}>(מושבת - חיבור גוגל פעיל)</span>}
-                </label>
-                <div className="api-key-input-container">
-                  <input
-                    id="input-api-key"
-                    type={showApiKey ? 'text' : 'password'}
-                    className="form-input numbers-font"
-                    placeholder="AIzaSy..."
-                    style={{ paddingLeft: '3rem' }}
-                    value={settings.geminiApiKey}
-                    onChange={(e) => setLocalSettings({ ...settings, geminiApiKey: e.target.value })}
-                    disabled={settings.useGoogleAuth}
-                  />
-                  <button
-                    type="button"
-                    className="api-key-toggle-btn"
-                    onClick={() => setShowApiKey(!showApiKey)}
-                    disabled={settings.useGoogleAuth}
-                  >
-                    {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
-                  </button>
+              <div className="form-group" style={{ paddingBottom: '1.25rem', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
+                <label className="form-label">המגדר שלך (כותב/ת הברכה) — חשוב לדקדוק העברי</label>
+                <div className="gender-radio-group">
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="senderGender"
+                      className="gender-radio-input"
+                      checked={(settings.senderGender || 'Male') === 'Male'}
+                      onChange={() => setLocalSettings({ ...settings, senderGender: 'Male' })}
+                    />
+                    <span>זכר (מאחל)</span>
+                  </label>
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="senderGender"
+                      className="gender-radio-input"
+                      checked={settings.senderGender === 'Female'}
+                      onChange={() => setLocalSettings({ ...settings, senderGender: 'Female' })}
+                    />
+                    <span>נקבה (מאחלת)</span>
+                  </label>
                 </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                  הברכות נכתבות בגוף ראשון — הגדרה זו קובעת אם ייכתב "מאחל" או "מאחלת". זכור/י ללחוץ "שמור הגדרות".
+                </p>
               </div>
 
-              <div style={{ marginTop: '2rem' }}>
-                <button type="submit" className="btn btn-primary" id="btn-save-settings">
+              <div className="form-group">
+                <label className="form-label">ספק הבינה המלאכותית (AI)</label>
+                <div className="gender-radio-group">
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="aiProvider"
+                      className="gender-radio-input"
+                      checked={(settings.aiProvider || 'gemini') === 'gemini'}
+                      onChange={() => { setLocalSettings({ ...settings, aiProvider: 'gemini' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                    />
+                    <span>Google Gemini</span>
+                  </label>
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="aiProvider"
+                      className="gender-radio-input"
+                      checked={settings.aiProvider === 'groq'}
+                      onChange={() => { setLocalSettings({ ...settings, aiProvider: 'groq' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                    />
+                    <span>Groq (חינמי) ⚡</span>
+                  </label>
+                </div>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                  לכל ספק מפתח API נפרד. ללא מפתח — האפליקציה משתמשת בברכות תבנית מובנות (חינם, ללא AI).
+                </p>
+              </div>
+
+              {(settings.aiProvider || 'gemini') === 'gemini' ? (
+                <>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="input-api-key">
+                      <span>מפתח API של Google Gemini</span>
+                    </label>
+                    <div className="api-key-input-container">
+                      <input
+                        id="input-api-key"
+                        type={showApiKey ? 'text' : 'password'}
+                        className="form-input numbers-font"
+                        placeholder="AIzaSy..."
+                        style={{ paddingLeft: '3rem' }}
+                        value={settings.geminiApiKey}
+                        onChange={(e) => {
+                          setLocalSettings({ ...settings, geminiApiKey: e.target.value });
+                          setKeyTestStatus('idle');
+                          setKeyTestError('');
+                        }}
+                      />
+                      <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
+                        {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                      🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.
+                    </p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="select-gemini-model">מודל Gemini</label>
+                    <select
+                      id="select-gemini-model"
+                      className="form-select"
+                      value={settings.geminiModel || DEFAULT_GEMINI_MODEL}
+                      onChange={(e) => { setLocalSettings({ ...settings, geminiModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                    >
+                      {GEMINI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                      אם מתקבלת שגיאת מכסה (429 / quota), נסה/י מודל אחר — זמינות המכסה החינמית משתנה לפי חשבון ואזור.
+                    </p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="input-groq-key">
+                      <span>מפתח API של Groq</span>
+                    </label>
+                    <div className="api-key-input-container">
+                      <input
+                        id="input-groq-key"
+                        type={showApiKey ? 'text' : 'password'}
+                        className="form-input numbers-font"
+                        placeholder="gsk_..."
+                        style={{ paddingLeft: '3rem' }}
+                        value={settings.groqApiKey || ''}
+                        onChange={(e) => {
+                          setLocalSettings({ ...settings, groqApiKey: e.target.value });
+                          setKeyTestStatus('idle');
+                          setKeyTestError('');
+                        }}
+                      />
+                      <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
+                        {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                      🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.
+                    </p>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="select-groq-model">מודל Groq</label>
+                    <select
+                      id="select-groq-model"
+                      className="form-select"
+                      value={settings.groqModel || DEFAULT_GROQ_MODEL}
+                      onChange={(e) => { setLocalSettings({ ...settings, groqModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                    >
+                      {GROQ_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                      <strong>gpt-oss-120b</strong> נותן את התוצאות הטובות ביותר בעברית. הדגמים הקטנים (gpt-oss-20b / llama) חלשים יותר.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem', flexWrap: 'wrap' }}>
+                <button type="submit" className="btn btn-primary" id="btn-save-settings" style={{ width: 'auto' }}>
                   שמור הגדרות
                 </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ width: 'auto' }}
+                  onClick={handleTestGeminiKey}
+                  disabled={keyTestStatus === 'testing' || !((settings.aiProvider === 'groq' ? settings.groqApiKey : settings.geminiApiKey) || '').trim()}
+                >
+                  {keyTestStatus === 'testing' ? (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', margin: 0 }}></div>
+                      <span>בודק...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <CheckCircle size={16} />
+                      <span>בדוק/י מפתח</span>
+                    </>
+                  )}
+                </button>
               </div>
+
+              {keyTestStatus === 'valid' && (
+                <div style={{ marginTop: '1rem', color: 'var(--success)', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <CheckCircle size={16} />
+                  <span>המפתח תקין ופעיל! יצירת ברכות AI מוכנה לשימוש.</span>
+                </div>
+              )}
+              {keyTestStatus === 'invalid' && (
+                <div style={{ marginTop: '1rem', color: 'var(--danger, #ff5c5c)', fontWeight: 'bold', fontSize: '0.85rem', lineHeight: '1.4' }}>
+                  ❌ המפתח אינו תקין. {keyTestError && <span style={{ fontWeight: 400, opacity: 0.85 }}>({keyTestError})</span>}
+                </div>
+              )}
 
               {saveStatus === 'success' && (
                 <div style={{ marginTop: '1rem', color: 'var(--success)', fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center' }}>
@@ -1587,11 +2062,19 @@ export default function App() {
 
             <div style={{ marginTop: '3rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>איך משיגים מפתח API בחינם?</h3>
-              <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <li>כנס לאתר <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Google AI Studio</a> והתחבר עם חשבון הגוגל שלך.</li>
-                <li>לחץ על הכפתור <strong>Get API Key</strong> בפינה העליונה.</li>
-                <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח שנוצר והדבק אותו כאן.</li>
-              </ol>
+              {(settings.aiProvider || 'gemini') === 'gemini' ? (
+                <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <li>כנס לאתר <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Google AI Studio</a> והתחבר עם חשבון הגוגל שלך.</li>
+                  <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח שנוצר והדבק אותו כאן.</li>
+                  <li>אם מתקבלת שגיאת מכסה (429) — נסה/י מודל אחר, או עבור/י ל-Groq (חינמי) למעלה.</li>
+                </ol>
+              ) : (
+                <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <li>כנס לאתר <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Groq Console</a> והתחבר (חינם, ניתן עם חשבון Google).</li>
+                  <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח (מתחיל ב-<span className="numbers-font">gsk_</span>) והדבק אותו כאן.</li>
+                  <li>לחץ/י "בדוק/י מפתח" כדי לוודא שהכול עובד. Groq חינמי לחלוטין.</li>
+                </ol>
+              )}
             </div>
           </section>
         )}
@@ -1719,6 +2202,16 @@ export default function App() {
                       />
                       <span>נקבה</span>
                     </label>
+                    <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
+                      <input
+                        type="radio"
+                        name="quickGender"
+                        className="gender-radio-input"
+                        checked={quickGender === 'Couple'}
+                        onChange={() => setQuickGender('Couple')}
+                      />
+                      <span>זוג / רבים</span>
+                    </label>
                   </div>
 
                   <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
@@ -1750,16 +2243,24 @@ export default function App() {
               {isGenerating ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div className="spinner"></div>
-                  <span>מנסח ברכה בעברית באמצעות Gemini AI...</span>
+                  <span>מנסח ברכה בעברית...</span>
                 </div>
-              ) : greetingText ? (
-                greetingText
               ) : (
-                <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-                  מלא את הפרטים למעלה ולחץ על "ייצר ברכה"
-                </div>
+                <textarea
+                  className="greeting-edit-textarea"
+                  value={greetingText}
+                  onChange={(e) => setGreetingText(e.target.value)}
+                  placeholder='הברכה תופיע כאן וניתנת לעריכה ידנית לפני העתקה / שליחה. מלא/י את הפרטים ולחץ/י על "ייצר ברכה".'
+                  dir="rtl"
+                />
               )}
             </div>
+
+            {greetingError && !isGenerating && (
+              <div style={{ marginBottom: '1.25rem', padding: '0.6rem 0.85rem', borderRadius: '8px', background: 'rgba(255,92,92,0.08)', border: '1px solid rgba(255,92,92,0.35)', color: '#ff9b9b', fontSize: '0.78rem', lineHeight: '1.45', direction: 'rtl' }}>
+                ⚠️ {greetingError}
+              </div>
+            )}
 
             {/* Control Panel */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem' }}>
@@ -1871,10 +2372,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Simulated Contacts Picker Modal */}
+      {/* Google Contacts Picker Modal (People API) */}
       {showContactsModal && (
         <div className="modal-overlay" style={{ zIndex: 5000 }}>
-          <div className="modal-content glass-card" style={{ maxWidth: '400px' }}>
+          <div className="modal-content glass-card" style={{ maxWidth: '420px' }}>
             <button
               onClick={() => setShowContactsModal(false)}
               className="icon-btn modal-close-btn"
@@ -1885,121 +2386,104 @@ export default function App() {
 
             <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--secondary)' }}>
               <Users size={20} />
-              <span>בחירת איש קשר מספר הטלפון 📱</span>
+              <span>ייבוא מאנשי הקשר של Google 📱</span>
             </h3>
-            
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: '1.4' }}>
-              הדמיית מגע עם ספר הטלפון הנייטיב של המכשיר. באנדרואיד, כפתור זה מתחבר לספר הטלפונים האמיתי שלך ומאחזר שמות ומספרים.
-            </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {MOCK_PHONE_CONTACTS.map((c, idx) => (
-                <div
-                  key={idx}
-                  onClick={() => handleSelectMockContact(c)}
-                  className="glass-card"
-                  style={{
-                    padding: '0.75rem 1rem',
-                    cursor: 'pointer',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    border: '1px solid var(--panel-border)',
-                    transition: 'var(--transition-smooth)'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--secondary)'}
-                  onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--panel-border)'}
+            {contactsError === 'not-connected' ? (
+              <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: '1.5' }}>
+                  כדי לייבא אנשי קשר אמיתיים, התחבר/י תחילה לחשבון Google שלך במסך ההגדרות.
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  style={{ width: 'auto' }}
+                  onClick={() => { setShowContactsModal(false); setActiveTab('settings'); }}
                 >
-                  <div>
-                    <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{c.firstName} {c.lastName}</div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }} className="numbers-font">{c.phone}</div>
-                  </div>
-                  <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                    {c.gender === 'Female' ? 'נקבה' : 'זכר'}
-                  </span>
+                  <LogIn size={16} />
+                  <span>עבור/י להגדרות</span>
+                </button>
+              </div>
+            ) : contactsLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem', gap: '0.75rem' }}>
+                <div className="spinner"></div>
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>טוען אנשי קשר מ-Google...</span>
+              </div>
+            ) : contactsError ? (
+              <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
+                <p style={{ fontSize: '0.9rem', color: 'var(--danger, #ff5c5c)', marginBottom: '1rem', lineHeight: '1.5' }}>{contactsError}</p>
+                <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => openContactsModal(contactsTarget)}>נסה/י שוב</button>
+              </div>
+            ) : googleContacts.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                לא נמצאו אנשי קשר בחשבון Google שלך.
+              </div>
+            ) : (() => {
+              const q = contactsSearch.toLowerCase().trim();
+              const filtered = q
+                ? googleContacts.filter(c =>
+                    `${c.firstName} ${c.lastName || ''}`.toLowerCase().includes(q) ||
+                    (c.phone || '').replace(/\D/g, '').includes(q.replace(/\D/g, '')) && q.replace(/\D/g, '') !== ''
+                  )
+                : googleContacts;
+              return (
+              <>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.4' }}>
+                  בחר/י איש קשר כדי למלא אוטומטית את פרטי האירוע. אם קיים תאריך יום הולדת ב-Google, הוא ימולא גם כן.
+                </p>
+                <div className="search-container" style={{ marginBottom: '0.85rem' }}>
+                  <input
+                    type="text"
+                    className="form-input search-input"
+                    placeholder="חיפוש לפי שם או טלפון..."
+                    value={contactsSearch}
+                    onChange={(e) => setContactsSearch(e.target.value)}
+                    autoFocus
+                  />
+                  <Search className="search-icon" size={18} />
                 </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Simulated Calendar Sync Modal */}
-      {showCalendarModal && (
-        <div className="modal-overlay" style={{ zIndex: 5000 }}>
-          <div className="modal-content glass-card" style={{ maxWidth: '500px' }}>
-            <button
-              onClick={() => setShowCalendarModal(false)}
-              className="icon-btn modal-close-btn"
-              title="סגור"
-            >
-              <X size={20} />
-            </button>
-
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--primary)' }}>
-              <CalendarIcon size={20} />
-              <span>סנכרון אירועים מיומן ה-Google / טלפון 📅</span>
-            </h3>
-            
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: '1.4' }}>
-              זיהינו אירועים מיוחדים וימי הולדת ביומן שלך. לחץ/י על "ייבוא" כדי להוסיף אותם לרשימת האירועים והברכות המתוכננים שלך.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto', paddingLeft: '5px' }}>
-              {calendarSyncList.length === 0 ? (
-                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                  כל האירועים סונכרנו בהצלחה! 🎉
-                </div>
-              ) : (
-                calendarSyncList.map((e, idx) => (
-                  <div
-                    key={idx}
-                    className="glass-card"
-                    style={{
-                      padding: '0.75rem 1rem',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      border: '1px solid var(--panel-border)'
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <span style={{ fontSize: '1.1rem' }}>{getOccasionEmoji(e.occasion)}</span>
-                        <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{e.firstName} {e.lastName}</span>
-                      </div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                        סוג: {e.occasion} • תאריך: <span className="numbers-font">{e.date.split('-').reverse().join('/')}</span>
-                      </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto', paddingLeft: '5px' }}>
+                  {filtered.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                      אין תוצאות עבור "{contactsSearch}"
                     </div>
-                    
-                    <button
-                      type="button"
-                      onClick={() => handleImportCalendarEvent(e, idx)}
-                      className="btn btn-primary"
-                      style={{ width: 'auto', padding: '0.35rem 0.8rem', fontSize: '0.8rem' }}
+                  ) : filtered.map((c) => (
+                    <div
+                      key={c.resourceName}
+                      onClick={() => handleSelectGoogleContact(c)}
+                      className="glass-card"
+                      style={{
+                        padding: '0.75rem 1rem',
+                        cursor: 'pointer',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        border: '1px solid var(--panel-border)',
+                        transition: 'var(--transition-smooth)'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--secondary)'}
+                      onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--panel-border)'}
                     >
-                      <Import size={12} />
-                      <span>ייבוא</span>
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-
-            <div style={{ marginTop: '1.5rem', textAlign: 'left' }}>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setShowCalendarModal(false)}
-                style={{ width: 'auto' }}
-              >
-                סגור
-              </button>
-            </div>
+                      <div>
+                        <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{c.firstName} {c.lastName || ''}</div>
+                        {c.phone && <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }} className="phone-number" dir="ltr">{c.phone}</div>}
+                        {c.birthday && <div style={{ fontSize: '0.75rem', color: 'var(--primary)' }}>🎂 {c.birthday.split('-').reverse().join('/')}</div>}
+                      </div>
+                      {c.gender && (
+                        <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
+                          {getGenderLabel(c.gender)}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+              );
+            })()}
           </div>
         </div>
       )}
+
     </div>
   );
 }

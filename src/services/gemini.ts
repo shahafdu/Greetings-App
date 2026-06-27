@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import type { Person } from './storage';
-import { calculateYears } from './storage';
+import type { Person, AppSettings } from './storage';
+import { calculateYears, DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_MODEL } from './storage';
 
 // Helper to determine the greeting name (first name only vs full name)
 const getGreetingName = (person: Person): string => {
@@ -10,8 +10,21 @@ const getGreetingName = (person: Person): string => {
   return `${person.firstName} ${person.lastName}`;
 };
 
+// Resolve sender-perspective slash forms ("מאחל/ת") to the writer's actual gender.
+const applySenderGender = (text: string, senderGender: 'Male' | 'Female'): string => {
+  const male = senderGender === 'Male';
+  return text
+    .replace(/מאחל\/ת/g, male ? 'מאחל' : 'מאחלת')
+    .replace(/בטוח\/ה/g, male ? 'בטוח' : 'בטוחה');
+};
+
 // A fully dynamic fallback template generator that adapts to tone and customDetails
-export const generateFallbackGreeting = (person: Person, tone: string, customDetails = ''): string => {
+export const generateFallbackGreeting = (
+  person: Person,
+  tone: string,
+  customDetails = '',
+  senderGender: 'Male' | 'Female' = 'Male'
+): string => {
   const years = calculateYears(person.eventDate);
   const name = getGreetingName(person);
   const isFemale = person.gender === 'Female';
@@ -19,7 +32,6 @@ export const generateFallbackGreeting = (person: Person, tone: string, customDet
   const congrats = 'מזל טוב!';
   const verbSuffix = isFemale ? 'שתמשיכי' : 'שתמשיך';
   const succeedVerb = isFemale ? 'תצליחי' : 'תצליח';
-  const wishVerb = isFemale ? 'תגשימי' : 'תגשים';
 
   let baseGreeting = '';
 
@@ -152,38 +164,99 @@ export const generateFallbackGreeting = (person: Person, tone: string, customDet
     baseGreeting += `\n\nבנוסף, רציתי לאחל לך במיוחד: ${customDetails}`;
   }
 
-  return baseGreeting;
+  return applySenderGender(baseGreeting, senderGender);
+};
+
+// --- Provider calls (each returns the generated text or throws) ---
+
+const callGemini = async (prompt: string, apiKey: string, model: string): Promise<string> => {
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const result = await genAI.getGenerativeModel({ model }).generateContent(prompt);
+  return (await result.response).text().trim();
+};
+
+// Groq exposes an OpenAI-compatible chat-completions endpoint, callable from the browser.
+const callGroq = async (prompt: string, apiKey: string, model: string): Promise<string> => {
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    body: JSON.stringify({ model, temperature: 0.9, messages: [{ role: 'user', content: prompt }] })
+  });
+  if (!res.ok) {
+    let detail = `HTTP ${res.status}`;
+    try { detail = (await res.json())?.error?.message || detail; } catch { /* keep status */ }
+    throw new Error(detail);
+  }
+  const data = await res.json();
+  return (data.choices?.[0]?.message?.content || '').trim();
+};
+
+// Resolve the active provider, its key and model from settings.
+const resolveProvider = (settings: AppSettings) => {
+  if ((settings.aiProvider || 'gemini') === 'groq') {
+    return {
+      provider: 'groq' as const,
+      key: (settings.groqApiKey || '').trim(),
+      model: settings.groqModel || DEFAULT_GROQ_MODEL,
+      label: 'Groq'
+    };
+  }
+  return {
+    provider: 'gemini' as const,
+    key: (settings.geminiApiKey || (import.meta.env.VITE_GEMINI_API_KEY as string | undefined) || '').trim(),
+    model: settings.geminiModel || DEFAULT_GEMINI_MODEL,
+    label: 'Gemini'
+  };
+};
+
+// Validate the user's API key for the active provider with a minimal real request.
+export const testAiApiKey = async (settings: AppSettings): Promise<{ ok: boolean; error?: string }> => {
+  const { provider, key, model } = resolveProvider(settings);
+  if (!key) return { ok: false, error: 'לא הוזן מפתח API.' };
+  try {
+    if (provider === 'groq') await callGroq('בדיקה', key, model);
+    else await callGemini('בדיקה', key, model);
+    return { ok: true };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'מפתח לא תקין.';
+    return { ok: false, error: message };
+  }
+};
+
+export interface GreetingResult {
+  text: string;
+  // Set only when a real Gemini call was attempted but failed; the text then holds the
+  // template fallback. Lets the UI tell the user *why* AI generation didn't run.
+  error?: string;
+}
+
+const genderGrammar = (gender: Person['gender']): string => {
+  if (gender === 'Female') return 'נקבה (לכתוב בגוף שני נקבה: את, תהיי, תצליחי וכו\')';
+  if (gender === 'Couple') return 'זוג / קבוצה (לכתוב בלשון רבים, פנייה לשני אנשים יחד: אתם, תהיו, שתזכו, מאחל לכם וכו\')';
+  return 'זכר (לכתוב בגוף שני זכר: אתה, תהיה, תצליח וכו\')';
 };
 
 export const generateHebrewBirthdayGreeting = async (
   person: Person,
   tone: 'normal' | 'funny' | 'emotional' | 'short',
   customDetails: string,
-  apiKey: string
-): Promise<string> => {
-  const isMockAuth = localStorage.getItem('birthday_greetings_google_auth_active') === 'true';
+  settings: AppSettings
+): Promise<GreetingResult> => {
+  const senderGender = settings.senderGender || 'Male';
+  const { provider, key, model, label } = resolveProvider(settings);
 
-  // If no real API key is set and no Google login is mocked, immediately return dynamic fallback
-  if (!apiKey && !isMockAuth) {
-    return generateFallbackGreeting(person, tone, customDetails);
+  // Real AI generation requires an API key for the active provider; without one we use
+  // the local Hebrew template fallback (no error: this is expected).
+  if (!key) {
+    return { text: generateFallbackGreeting(person, tone, customDetails, senderGender) };
   }
 
-  const activeKey = apiKey || "MOCK_GOOGLE_AUTH_GEMINI_KEY";
-
   try {
-    // If it's the mock auth key, generate the custom fallback greeting directly to guarantee dynamic changes
-    if (activeKey === "MOCK_GOOGLE_AUTH_GEMINI_KEY") {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate minor latency for realistic UX
-      return generateFallbackGreeting(person, tone, customDetails);
-    }
-
-    const genAI = new GoogleGenerativeAI(activeKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
-
     const years = calculateYears(person.eventDate);
-    const genderHebrew = person.gender === 'Female' ? 'נקבה (לכתוב בגוף שני נקבה: את, תהיי, תצליחי וכו\')' : 'זכר (לכתוב בגוף שני זכר: אתה, תהיה, תצליח וכו\')';
+    const genderHebrew = genderGrammar(person.gender);
+    const senderHebrew = senderGender === 'Female' ? 'נקבה' : 'זכר';
     const nameForGreeting = getGreetingName(person);
-    
+
     let toneDescription = 'חם ומכבד';
     if (tone === 'funny') toneDescription = 'מצחיק, משעשע והומוריסטי';
     if (tone === 'emotional') toneDescription = 'מרגש מאוד, עמוק ומלא אהבה';
@@ -197,6 +270,7 @@ export const generateHebrewBirthdayGreeting = async (
 - מספר שנים רלוונטי (אם יש, כגון גיל או שנות נישואין): ${years}
 - מערכת יחסים: ${person.relation}
 - מגדר של מקבל/ת הברכה: ${genderHebrew} (חשוב מאוד להקפיד על דקדוק עברי נכון לחלוטין בהתאם למגדר!)
+- מגדר של כותב/ת הברכה (השולח/ת): ${senderHebrew}. נסח את פעלי הגוף-ראשון בהתאם — לדוגמה: "מאחל" אם השולח זכר, "מאחלת" אם השולחת נקבה; "אוהב" מול "אוהבת"; "גאה" זהה לשניהם.
 - סגנון/טון הברכה: ${toneDescription}
 ${person.notes ? `- מידע נוסף על האדם (תחביבים/תכונות/הקשר): ${person.notes}` : ''}
 ${customDetails ? `- בקשות מיוחדות לשילוב בברכה: ${customDetails}` : ''}
@@ -210,12 +284,21 @@ ${customDetails ? `- בקשות מיוחדות לשילוב בברכה: ${custom
 6. אל תוסיף הערות כגון "נכתב על ידי בינה מלאכותית" או "ברכת Gemini". הברכה צריכה להיות טהורה ונקייה.
 `;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text().trim();
-    return text || generateFallbackGreeting(person, tone, customDetails);
+    const text = provider === 'groq'
+      ? await callGroq(prompt, key, model)
+      : await callGemini(prompt, key, model);
+
+    if (text) return { text };
+    return {
+      text: generateFallbackGreeting(person, tone, customDetails, senderGender),
+      error: `${label} החזיר תשובה ריקה (ייתכן בשל מסנני בטיחות). מוצגת ברכת ברירת מחדל.`
+    };
   } catch (error) {
-    console.error('Gemini Generation Error:', error);
-    return generateFallbackGreeting(person, tone, customDetails);
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`${label} Generation Error:`, detail);
+    return {
+      text: generateFallbackGreeting(person, tone, customDetails, senderGender),
+      error: `יצירת ה-AI נכשלה (${label}) — מוצגת ברכת ברירת מחדל. פרטים: ${detail}`
+    };
   }
 };

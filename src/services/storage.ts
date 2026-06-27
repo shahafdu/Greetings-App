@@ -3,9 +3,10 @@ export interface Person {
   firstName: string;
   lastName?: string;
   eventDate: string; // YYYY-MM-DD
-  occasion: 'יום הולדת' | 'יום נישואין' | 'סיום לימודים' | 'קידום בעבודה' | 'הולדת תינוק/ת' | 'מעבר דירה' | 'חג שמח' | 'גיוס / שחרור' | 'אחר';
+  // One of OCCASIONS, or any free-text value the user typed via the "אחר" option.
+  occasion: string;
   relation: string;
-  gender: 'Male' | 'Female';
+  gender: 'Male' | 'Female' | 'Couple';
   phone?: string;
   notes?: string;
   notifyDaysBefore: number;
@@ -15,8 +16,19 @@ export interface Person {
   useFirstNameOnly?: boolean;
 }
 
+export type AiProvider = 'gemini' | 'groq';
+
 export interface AppSettings {
+  // Which AI backend to use for greetings. Each is optional; without a key the app
+  // falls back to the built-in Hebrew templates.
+  aiProvider?: AiProvider;
   geminiApiKey: string;
+  geminiModel?: string;
+  groqApiKey?: string;
+  groqModel?: string;
+  // The gender of the *sender* (the app user writing the greeting). Hebrew first-person
+  // verbs ("מאחל" vs "מאחלת") depend on it, so it must be set for correct grammar.
+  senderGender?: 'Male' | 'Female';
   useGoogleAuth: boolean;
   googleUserEmail?: string;
   googleUserName?: string;
@@ -24,17 +36,53 @@ export interface AppSettings {
   defaultNotifyDaysBefore: number;
 }
 
+export const DEFAULT_AI_PROVIDER: AiProvider = 'gemini';
+
+export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite';
+
+// Models offered in Settings. Free-tier availability varies by account/region — if one
+// returns a 429 "quota: 0", the user can switch to another here.
+export const GEMINI_MODELS = [
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
+  'gemini-2.0-flash',
+  'gemini-2.0-flash-lite',
+  // Open Gemma models, also served free via the Gemini API (may have separate quota).
+  'gemma-3-27b-it',
+  'gemma-3-12b-it'
+] as const;
+
+export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
+
+// Groq's free, OpenAI-compatible production models that work well for Hebrew.
+// gpt-oss-120b is the strongest; the others are lighter fallbacks.
+export const GROQ_MODELS = [
+  'openai/gpt-oss-120b',
+  'openai/gpt-oss-20b',
+  'llama-3.3-70b-versatile',
+  'llama-3.1-8b-instant'
+] as const;
+
 const PEOPLE_STORAGE_KEY = 'birthday_greetings_people';
 const SETTINGS_STORAGE_KEY = 'birthday_greetings_settings';
 
 export const RELATIONS = [
   'בן/בת זוג',
+  'בן/בת',
   'ילד/ה',
   'הורה',
   'אח/אחות',
+  'סבא/סבתא',
+  'נכד/ה',
+  'דוד/דודה',
+  'אחיין/ית',
+  'בן/בת דוד/ה',
+  'חם/חמות',
+  'גיס/גיסה',
   'חבר/ה קרוב/ה',
   'חבר/ה',
   'קולגה',
+  'שכן/ה',
   'אחר'
 ];
 
@@ -50,9 +98,21 @@ export const OCCASIONS = [
   'אחר'
 ] as const;
 
-// Helper to determine if a relationship is close
+// Helper to determine if a relationship is close, which warrants omitting surnames
 export const isCloseRelation = (relation: string): boolean => {
-  return ['בן/בת זוג', 'ילד/ה', 'הורה', 'אח/אחות', 'חבר/ה קרוב/ה'].includes(relation);
+  return [
+    'בן/בת זוג', 'בן/בת', 'ילד/ה', 'הורה', 'אח/אחות',
+    'סבא/סבתא', 'נכד/ה', 'דוד/דודה', 'אחיין/ית', 'בן/בת דוד/ה',
+    'חם/חמות', 'גיס/גיסה', 'חבר/ה קרוב/ה'
+  ].includes(relation);
+};
+
+// Categorize a relationship for color-coding in lists and the calendar.
+export const getRelationCategory = (relation: string): 'spouse' | 'family' | 'friend' => {
+  if (relation.includes('זוג') || relation.includes('Spouse')) return 'spouse';
+  const familyTerms = ['בן', 'בת', 'ילד', 'הורה', 'אח', 'אחות', 'סב', 'נכד', 'דוד', 'אחיין', 'חם', 'גיס'];
+  if (familyTerms.some(t => relation.includes(t))) return 'family';
+  return 'friend';
 };
 
 const defaultPeople: Person[] = [
@@ -62,7 +122,7 @@ const defaultPeople: Person[] = [
     lastName: 'כהן',
     eventDate: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
     occasion: 'יום הולדת',
-    relation: 'חבר קרוב',
+    relation: 'חבר/ה קרוב/ה',
     gender: 'Male',
     phone: '0501234567',
     notes: 'אוהב כדורגל, יין אדום וטיולים בטבע',
@@ -78,7 +138,7 @@ const defaultPeople: Person[] = [
     lastName: 'לוי',
     eventDate: '2018-06-16',
     occasion: 'יום נישואין',
-    relation: 'משפחה',
+    relation: 'בן/בת זוג',
     gender: 'Female',
     phone: '0547654321',
     notes: 'חוגגים שנות נישואין, אוהבים ספא ומסעדות יוקרה',
@@ -94,7 +154,7 @@ const defaultPeople: Person[] = [
     lastName: 'ברק',
     eventDate: '2026-06-25',
     occasion: 'סיום לימודים',
-    relation: 'אח',
+    relation: 'אח/אחות',
     gender: 'Male',
     phone: '0529998877',
     notes: 'מסיים תואר ראשון במדעי המחשב בהצטיינות, אוהב גיימינג',
@@ -182,12 +242,23 @@ export const deletePerson = (id: string): void => {
 
 export const getSettings = (): AppSettings => {
   const data = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  return data ? JSON.parse(data) : {
+  const settings: AppSettings = data ? JSON.parse(data) : {
     geminiApiKey: '',
+    senderGender: 'Male',
     useGoogleAuth: false,
     defaultNotifyHour: '09:00',
     defaultNotifyDaysBefore: 0
   };
+  if (!settings.aiProvider) settings.aiProvider = DEFAULT_AI_PROVIDER;
+  // Reset to a valid default if the saved model is no longer offered (e.g. a retired model).
+  if (!settings.geminiModel || !(GEMINI_MODELS as readonly string[]).includes(settings.geminiModel)) {
+    settings.geminiModel = DEFAULT_GEMINI_MODEL;
+  }
+  if (!settings.groqModel || !(GROQ_MODELS as readonly string[]).includes(settings.groqModel)) {
+    settings.groqModel = DEFAULT_GROQ_MODEL;
+  }
+  if (!settings.senderGender) settings.senderGender = 'Male';
+  return settings;
 };
 
 export const saveSettings = (settings: AppSettings): void => {
@@ -293,6 +364,13 @@ export const isEventToday = (person: Person): boolean => {
 
   // Yearly
   return eventDate.getDate() === today.getDate() && eventDate.getMonth() === today.getMonth();
+};
+
+// Hebrew label for a gender value (Couple = a couple/group addressed in plural).
+export const getGenderLabel = (gender: Person['gender']): string => {
+  if (gender === 'Female') return 'נקבה';
+  if (gender === 'Couple') return 'זוג / רבים';
+  return 'זכר';
 };
 
 export const getOccasionEmoji = (occasion: Person['occasion']): string => {

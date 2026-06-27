@@ -80,6 +80,15 @@ body {
   font-family: var(--font-numbers);
 }
 
+/* Phone numbers are strictly LTR; isolate them so the RTL layout doesn't reorder
+   the dial-prefix/parentheses (e.g. "050-1234567" must not flip to "1234567-050"). */
+.phone-number {
+  font-family: var(--font-numbers);
+  direction: ltr;
+  unicode-bidi: isolate;
+  display: inline-block;
+}
+
 /* Glass Card */
 .glass-card {
   background: var(--panel-bg);
@@ -186,6 +195,17 @@ body {
 @media (min-width: 1024px) {
   .main-grid {
     grid-template-columns: 350px 1fr;
+  }
+
+  /* Keep the add/edit form visible while scrolling the events list. align-self:start
+     stops the grid item from stretching (which would disable sticky); the form scrolls
+     internally if taller than the viewport. */
+  #add-edit-section {
+    position: sticky;
+    top: calc(var(--app-header-h, 96px) + 1rem);
+    align-self: start;
+    max-height: calc(100vh - var(--app-header-h, 96px) - 2rem);
+    overflow-y: auto;
   }
 }
 
@@ -346,6 +366,25 @@ body {
 /* Card and List Styling */
 .section-panel {
   padding: 1.5rem;
+}
+
+/* Keep the top bar (logo + tabs) pinned while scrolling. */
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+/* Within the events list, keep the title/count + search bar pinned below the top bar
+   while scrolling through cards. --app-header-h is measured in JS. */
+.list-sticky-header {
+  position: sticky;
+  top: calc(var(--app-header-h, 96px) + 0.5rem);
+  z-index: 40;
+  background: var(--panel-bg-solid);
+  margin: 0 -1.5rem 1rem;
+  padding: 0.75rem 1.5rem 0.25rem;
+  border-radius: var(--radius-sm);
 }
 
 .panel-header {
@@ -785,6 +824,29 @@ body {
   align-items: center;
   justify-content: center;
   color: var(--text-secondary);
+}
+
+/* The greeting is editable inline before copying/sending. */
+.greeting-edit-textarea {
+  width: 100%;
+  min-height: 150px;
+  height: 100%;
+  background: transparent;
+  border: none;
+  outline: none;
+  resize: vertical;
+  color: var(--text-primary);
+  font-family: var(--font-main);
+  font-size: 1.1rem;
+  line-height: 1.8;
+  direction: rtl;
+  text-align: right;
+  padding: 0;
+}
+
+.greeting-edit-textarea::placeholder {
+  color: var(--text-muted);
+  font-size: 0.95rem;
 }
 
 .greeting-options-grid {
