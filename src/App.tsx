@@ -1262,7 +1262,7 @@ export default function App() {
                       onChange={(e) => setFormViaProxy(e.target.checked)}
                       style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                     />
-                    <span>שליחת הברכה דרך מישהו אחר (פרוקסי) 📨</span>
+                    <span>שליחת הברכה דרך מישהו אחר (פרוקסי)</span>
                   </label>
                   {formViaProxy && (
                     <div style={{ marginTop: '0.6rem', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -1783,7 +1783,7 @@ export default function App() {
                   onChange={(e) => setQuickViaProxy(e.target.checked)}
                   style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
                 />
-                <span>שליחה דרך מישהו אחר (פרוקסי) 📨</span>
+                <span>שליחה דרך מישהו אחר (פרוקסי)</span>
               </label>
               {quickViaProxy && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.6rem', alignItems: 'end', padding: '0.6rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
