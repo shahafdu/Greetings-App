@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Person, AppSettings } from './storage';
-import { calculateYears, DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_MODEL } from './storage';
+import { calculateYears, DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_MODEL, DEFAULT_OPENROUTER_MODEL } from './storage';
 
 // Helper to determine the greeting name (first name only vs full name)
 const getGreetingName = (person: Person): string => {
@@ -23,12 +23,23 @@ export const generateFallbackGreeting = (
   person: Person,
   tone: string,
   customDetails = '',
-  senderGender: 'Male' | 'Female' = 'Male'
+  senderGender: 'Male' | 'Female' = 'Male',
+  senderName = ''
 ): string => {
   const years = calculateYears(person.eventDate);
   const name = getGreetingName(person);
   const isFemale = person.gender === 'Female';
-  
+
+  const signature = senderName.trim() ? `\n\nבאהבה,\n${senderName.trim()}` : '';
+
+  // Proxy delivery: the message is addressed to someone else about the celebrant.
+  if (person.proxyName && person.proxyName.trim()) {
+    const link = person.celebrantRelationToProxy ? ` (${person.celebrantRelationToProxy})` : '';
+    let msg = `${person.proxyName.trim()} היקר/ה! 🎉\nמזל טוב לרגל ה${person.occasion} של ${name}${link}! מאחל/ת המון אושר, בריאות ושמחה.`;
+    if (customDetails.trim()) msg += `\n\nבנוסף: ${customDetails}`;
+    return applySenderGender(msg, senderGender) + signature;
+  }
+
   const congrats = 'מזל טוב!';
   const verbSuffix = isFemale ? 'שתמשיכי' : 'שתמשיך';
   const succeedVerb = isFemale ? 'תצליחי' : 'תצליח';
@@ -164,7 +175,7 @@ export const generateFallbackGreeting = (
     baseGreeting += `\n\nבנוסף, רציתי לאחל לך במיוחד: ${customDetails}`;
   }
 
-  return applySenderGender(baseGreeting, senderGender);
+  return applySenderGender(baseGreeting, senderGender) + signature;
 };
 
 // --- Provider calls (each returns the generated text or throws) ---
@@ -175,11 +186,17 @@ const callGemini = async (prompt: string, apiKey: string, model: string): Promis
   return (await result.response).text().trim();
 };
 
-// Groq exposes an OpenAI-compatible chat-completions endpoint, callable from the browser.
-const callGroq = async (prompt: string, apiKey: string, model: string): Promise<string> => {
-  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+// Shared helper for OpenAI-compatible chat-completions endpoints (Groq, OpenRouter).
+const callOpenAICompatible = async (
+  url: string,
+  prompt: string,
+  apiKey: string,
+  model: string,
+  extraHeaders: Record<string, string> = {}
+): Promise<string> => {
+  const res = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...extraHeaders },
     body: JSON.stringify({ model, temperature: 0.9, messages: [{ role: 'user', content: prompt }] })
   });
   if (!res.ok) {
@@ -191,15 +208,47 @@ const callGroq = async (prompt: string, apiKey: string, model: string): Promise<
   return (data.choices?.[0]?.message?.content || '').trim();
 };
 
+const callGroq = (prompt: string, apiKey: string, model: string): Promise<string> =>
+  callOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', prompt, apiKey, model);
+
+const callOpenRouter = (prompt: string, apiKey: string, model: string): Promise<string> =>
+  callOpenAICompatible('https://openrouter.ai/api/v1/chat/completions', prompt, apiKey, model, {
+    'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
+    'X-Title': 'Greetings App'
+  });
+
+// Fetch OpenRouter's currently-free models (public endpoint, no key needed). Free models
+// have zero prompt+completion pricing. Returns ids with preferred families surfaced first.
+export const fetchOpenRouterFreeModels = async (): Promise<string[]> => {
+  const res = await fetch('https://openrouter.ai/api/v1/models');
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const data = await res.json();
+  const free = (data.data || [])
+    .filter((m: any) => {
+      const p = m.pricing || {};
+      return Number(p.prompt) === 0 && Number(p.completion) === 0;
+    })
+    .map((m: any) => m.id as string)
+    .filter(Boolean);
+
+  const rank = (id: string): number => {
+    if (id.includes('gpt-oss')) return 0;
+    if (id.includes('gemma')) return 1;
+    if (id.includes('llama')) return 2;
+    if (id.includes('mistral') || id.includes('deepseek')) return 3;
+    return 5;
+  };
+  return Array.from(new Set<string>(free)).sort((a, b) => rank(a) - rank(b) || a.localeCompare(b));
+};
+
 // Resolve the active provider, its key and model from settings.
 const resolveProvider = (settings: AppSettings) => {
-  if ((settings.aiProvider || 'gemini') === 'groq') {
-    return {
-      provider: 'groq' as const,
-      key: (settings.groqApiKey || '').trim(),
-      model: settings.groqModel || DEFAULT_GROQ_MODEL,
-      label: 'Groq'
-    };
+  const provider = settings.aiProvider || 'gemini';
+  if (provider === 'groq') {
+    return { provider: 'groq' as const, key: (settings.groqApiKey || '').trim(), model: settings.groqModel || DEFAULT_GROQ_MODEL, label: 'Groq' };
+  }
+  if (provider === 'openrouter') {
+    return { provider: 'openrouter' as const, key: (settings.openRouterApiKey || '').trim(), model: settings.openRouterModel || DEFAULT_OPENROUTER_MODEL, label: 'OpenRouter' };
   }
   return {
     provider: 'gemini' as const,
@@ -209,13 +258,19 @@ const resolveProvider = (settings: AppSettings) => {
   };
 };
 
+// Run a prompt against the active provider.
+const callProvider = (provider: 'gemini' | 'groq' | 'openrouter', prompt: string, key: string, model: string): Promise<string> => {
+  if (provider === 'groq') return callGroq(prompt, key, model);
+  if (provider === 'openrouter') return callOpenRouter(prompt, key, model);
+  return callGemini(prompt, key, model);
+};
+
 // Validate the user's API key for the active provider with a minimal real request.
 export const testAiApiKey = async (settings: AppSettings): Promise<{ ok: boolean; error?: string }> => {
   const { provider, key, model } = resolveProvider(settings);
   if (!key) return { ok: false, error: 'לא הוזן מפתח API.' };
   try {
-    if (provider === 'groq') await callGroq('בדיקה', key, model);
-    else await callGemini('בדיקה', key, model);
+    await callProvider(provider, 'בדיקה', key, model);
     return { ok: true };
   } catch (error) {
     const message = error instanceof Error ? error.message : 'מפתח לא תקין.';
@@ -243,12 +298,13 @@ export const generateHebrewBirthdayGreeting = async (
   settings: AppSettings
 ): Promise<GreetingResult> => {
   const senderGender = settings.senderGender || 'Male';
+  const senderName = (settings.senderName || '').trim();
   const { provider, key, model, label } = resolveProvider(settings);
 
   // Real AI generation requires an API key for the active provider; without one we use
   // the local Hebrew template fallback (no error: this is expected).
   if (!key) {
-    return { text: generateFallbackGreeting(person, tone, customDetails, senderGender) };
+    return { text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName) };
   }
 
   try {
@@ -256,48 +312,61 @@ export const generateHebrewBirthdayGreeting = async (
     const genderHebrew = genderGrammar(person.gender);
     const senderHebrew = senderGender === 'Female' ? 'נקבה' : 'זכר';
     const nameForGreeting = getGreetingName(person);
+    const isProxy = !!(person.proxyName && person.proxyName.trim());
+    const celebrantGenderWord = person.gender === 'Female' ? 'נקבה' : person.gender === 'Couple' ? 'זוג/רבים' : 'זכר';
 
     let toneDescription = 'חם ומכבד';
     if (tone === 'funny') toneDescription = 'מצחיק, משעשע והומוריסטי';
     if (tone === 'emotional') toneDescription = 'מרגש מאוד, עמוק ומלא אהבה';
     if (tone === 'short') toneDescription = 'קצר וקולע, מתאים להודעה מהירה';
 
+    // The recipient block differs when the greeting is delivered via a proxy (addressed to
+    // someone other than the celebrant — e.g. a parent or a family group).
+    const recipientBlock = isProxy
+      ? `- אופן השליחה: הברכה נשלחת דרך אדם אחר (פרוקסי). יש לפנות ישירות אל מקבל/ת הברכה ולברך אותו/ה לרגל האירוע של אדם אחר.
+- מקבל/ת הברכה (אליו/אליה לפנות בגוף שני): ${person.proxyName!.trim()}
+- מגדר מקבל/ת הברכה: ${genderGrammar(person.proxyGender || 'Male')}
+- בעל/ת האירוע (האדם שעבורו האירוע, אך לא נמען הברכה): ${nameForGreeting}${person.celebrantRelationToProxy ? ` — ${person.celebrantRelationToProxy} של מקבל/ת הברכה` : ''}
+- מגדר בעל/ת האירוע: ${celebrantGenderWord}
+- מספר שנים רלוונטי (גיל / שנים): ${years}
+- חשוב מאוד: פנה/י ישירות אל ${person.proxyName!.trim()} (בגוף שני, לפי מגדרו/ה) וברך/י אותו/ה לרגל ה${person.occasion} של ${nameForGreeting}. אל תפנה/י אל ${nameForGreeting} בגוף שני.`
+      : `- שם מקבל/ת הברכה: ${nameForGreeting}
+- מספר שנים רלוונטי (אם יש, כגון גיל או שנות נישואין): ${years}
+- מערכת יחסים: ${person.relation}
+- מגדר של מקבל/ת הברכה: ${genderHebrew} (חשוב מאוד להקפיד על דקדוק עברי נכון לחלוטין בהתאם למגדר!)`;
+
     const prompt = `
 אתה כותב ברכות יצירתי ומיומן בעברית.
 אנא כתוב ברכה חמה ואישית בעברית לאירוע הבא:
 - סוג האירוע: ${person.occasion}
-- שם מקבל/ת הברכה: ${nameForGreeting}
-- מספר שנים רלוונטי (אם יש, כגון גיל או שנות נישואין): ${years}
-- מערכת יחסים: ${person.relation}
-- מגדר של מקבל/ת הברכה: ${genderHebrew} (חשוב מאוד להקפיד על דקדוק עברי נכון לחלוטין בהתאם למגדר!)
+${recipientBlock}
 - מגדר של כותב/ת הברכה (השולח/ת): ${senderHebrew}. נסח את פעלי הגוף-ראשון בהתאם — לדוגמה: "מאחל" אם השולח זכר, "מאחלת" אם השולחת נקבה; "אוהב" מול "אוהבת"; "גאה" זהה לשניהם.
 - סגנון/טון הברכה: ${toneDescription}
 ${person.notes ? `- מידע נוסף על האדם (תחביבים/תכונות/הקשר): ${person.notes}` : ''}
 ${customDetails ? `- בקשות מיוחדות לשילוב בברכה: ${customDetails}` : ''}
+${senderName ? `- חתום/חתמי את הברכה בסופה בשם השולח/ת: ${senderName}` : ''}
 
 הנחיות חשובות:
-1. התאם את תוכן הברכה במדויק לסוג האירוע (${person.occasion}). לדוגמה, יום נישואין צריך להיות רומנטי/משפחתי, סיום לימודים צריך להתרכז בהישגים אקדמיים ועתיד מקצועי, קידום בעבודה בהצלחה ניהולית ומקצועיות, הולדת תינוק במשפחה והורות.
+1. התאם את תוכן הברכה במדויק לסוג האירוע (${person.occasion}).
 2. כתוב את הברכה ישירות בעברית טבעית, זורמת ויפהפייה.
 3. אל תצרף שום הערות שוליים, כותרות, מרכאות חיצוניות או טקסט מקדים כגון "הנה הברכה שלך:". התחל ישירות בברכה עצמה.
 4. שלב אימוג'ים מתאימים כדי להפוך את הברכה לחגיגית ומזמינה.
-5. הקפד על התאמה דקדוקית מלאה למגדר המקבל (${person.gender}).
+5. הקפד על דקדוק עברי נכון לחלוטין בהתאם לכל המגדרים שצוינו.
 6. אל תוסיף הערות כגון "נכתב על ידי בינה מלאכותית" או "ברכת Gemini". הברכה צריכה להיות טהורה ונקייה.
 `;
 
-    const text = provider === 'groq'
-      ? await callGroq(prompt, key, model)
-      : await callGemini(prompt, key, model);
+    const text = await callProvider(provider, prompt, key, model);
 
     if (text) return { text };
     return {
-      text: generateFallbackGreeting(person, tone, customDetails, senderGender),
+      text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName),
       error: `${label} החזיר תשובה ריקה (ייתכן בשל מסנני בטיחות). מוצגת ברכת ברירת מחדל.`
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`${label} Generation Error:`, detail);
     return {
-      text: generateFallbackGreeting(person, tone, customDetails, senderGender),
+      text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName),
       error: `יצירת ה-AI נכשלה (${label}) — מוצגת ברכת ברירת מחדל. פרטים: ${detail}`
     };
   }

@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Exported data backups — contain personal info (keys, contacts). Never commit.
+greetings-backup-*.json
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

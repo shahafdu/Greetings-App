@@ -1,3 +1,14 @@
+import {
+  isVaultEnabled,
+  isVaultUnlocked,
+  setupVaultKey,
+  loadVaultKey,
+  clearVaultKey,
+  removeVault,
+  encryptString,
+  decryptString
+} from './vault';
+
 export interface Person {
   id: string;
   firstName: string;
@@ -14,9 +25,14 @@ export interface Person {
   isRecurring: boolean;
   recurrence: 'yearly' | 'monthly' | 'weekly' | 'once';
   useFirstNameOnly?: boolean;
+  // Proxy delivery: address the greeting to someone else (a parent, a family WhatsApp
+  // group, etc.) instead of the celebrant. Empty proxyName = sent directly to the celebrant.
+  proxyName?: string;
+  proxyGender?: 'Male' | 'Female' | 'Couple';
+  celebrantRelationToProxy?: string; // free text describing the celebrant to the proxy, e.g. "הבן שלך"
 }
 
-export type AiProvider = 'gemini' | 'groq';
+export type AiProvider = 'gemini' | 'groq' | 'openrouter';
 
 export interface AppSettings {
   // Which AI backend to use for greetings. Each is optional; without a key the app
@@ -26,9 +42,13 @@ export interface AppSettings {
   geminiModel?: string;
   groqApiKey?: string;
   groqModel?: string;
+  openRouterApiKey?: string;
+  openRouterModel?: string;
   // The gender of the *sender* (the app user writing the greeting). Hebrew first-person
   // verbs ("מאחל" vs "מאחלת") depend on it, so it must be set for correct grammar.
   senderGender?: 'Male' | 'Female';
+  // The sender's name, used to sign the greeting (e.g. "באהבה, דנה").
+  senderName?: string;
   useGoogleAuth: boolean;
   googleUserEmail?: string;
   googleUserName?: string;
@@ -46,10 +66,7 @@ export const GEMINI_MODELS = [
   'gemini-2.5-flash',
   'gemini-2.5-flash-lite',
   'gemini-2.0-flash',
-  'gemini-2.0-flash-lite',
-  // Open Gemma models, also served free via the Gemini API (may have separate quota).
-  'gemma-3-27b-it',
-  'gemma-3-12b-it'
+  'gemini-2.0-flash-lite'
 ] as const;
 
 export const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b';
@@ -63,13 +80,23 @@ export const GROQ_MODELS = [
   'llama-3.1-8b-instant'
 ] as const;
 
+export const DEFAULT_OPENROUTER_MODEL = 'openai/gpt-oss-120b:free';
+
+// Fallback list, used only if the live free-model list can't be fetched from OpenRouter.
+// The real options are fetched at runtime (their slugs change often).
+export const OPENROUTER_MODELS = [
+  'openai/gpt-oss-120b:free',
+  'openai/gpt-oss-20b:free',
+  'google/gemma-4-31b-it:free',
+  'google/gemma-4-26b-a4b-it:free'
+] as const;
+
 const PEOPLE_STORAGE_KEY = 'birthday_greetings_people';
 const SETTINGS_STORAGE_KEY = 'birthday_greetings_settings';
 
 export const RELATIONS = [
   'בן/בת זוג',
   'בן/בת',
-  'ילד/ה',
   'הורה',
   'אח/אחות',
   'סבא/סבתא',
@@ -166,83 +193,45 @@ const defaultPeople: Person[] = [
   }
 ];
 
-export const getPeople = (): Person[] => {
-  const data = localStorage.getItem(PEOPLE_STORAGE_KEY);
-  if (!data) {
-    localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(defaultPeople));
-    return defaultPeople;
+// ---- In-memory cache + plain/encrypted persistence ----
+// Data is held in memory while the app runs. When the App Lock is enabled it is persisted
+// as a single encrypted blob; otherwise as the original plain localStorage keys.
+
+const VAULT_DATA_KEY = 'birthday_greetings_vault_data';
+
+let peopleCache: Person[] | null = null;
+let settingsCache: AppSettings | null = null;
+
+const migratePeople = (parsed: any[]): Person[] => parsed.map(p => {
+  let firstName = p.firstName || '';
+  let lastName = p.lastName || '';
+  if (!firstName && p.name) {
+    const parts = p.name.trim().split(/\s+/);
+    firstName = parts[0];
+    lastName = parts.slice(1).join(' ');
   }
-  
-  const parsed = JSON.parse(data) as any[];
-  const migrated = parsed.map(p => {
-    // Determine names split
-    let firstName = p.firstName || '';
-    let lastName = p.lastName || '';
-    if (!firstName && p.name) {
-      const parts = p.name.trim().split(/\s+/);
-      firstName = parts[0];
-      lastName = parts.slice(1).join(' ');
-    }
-
-    const relation = p.relation || 'חבר/ה';
-    const useFirstNameOnly = p.useFirstNameOnly !== undefined 
-      ? p.useFirstNameOnly 
-      : isCloseRelation(relation);
-
-    return {
-      id: p.id || `person-${Date.now()}-${Math.random()}`,
-      firstName: firstName || 'ללא שם',
-      lastName: lastName || undefined,
-      eventDate: p.eventDate || p.birthday || '1995-01-01',
-      occasion: p.occasion || 'יום הולדת',
-      relation: relation,
-      gender: p.gender || 'Male',
-      phone: p.phone,
-      notes: p.notes,
-      notifyDaysBefore: p.notifyDaysBefore !== undefined ? p.notifyDaysBefore : 0,
-      notifyHour: p.notifyHour || '09:00',
-      isRecurring: p.isRecurring !== undefined ? p.isRecurring : (p.recurrence ? p.recurrence !== 'once' : true),
-      recurrence: p.recurrence || 'yearly',
-      useFirstNameOnly: useFirstNameOnly
-    };
-  });
-  
-  return migrated;
-};
-
-export const savePeople = (people: Person[]): void => {
-  localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(people));
-};
-
-export const addPerson = (newPerson: Omit<Person, 'id'>): Person => {
-  const people = getPeople();
-  const person: Person = {
-    ...newPerson,
-    id: `person-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  const relation = p.relation || 'חבר/ה';
+  const useFirstNameOnly = p.useFirstNameOnly !== undefined ? p.useFirstNameOnly : isCloseRelation(relation);
+  return {
+    id: p.id || `person-${Date.now()}-${Math.random()}`,
+    firstName: firstName || 'ללא שם',
+    lastName: lastName || undefined,
+    eventDate: p.eventDate || p.birthday || '1995-01-01',
+    occasion: p.occasion || 'יום הולדת',
+    relation,
+    gender: p.gender || 'Male',
+    phone: p.phone,
+    notes: p.notes,
+    notifyDaysBefore: p.notifyDaysBefore !== undefined ? p.notifyDaysBefore : 0,
+    notifyHour: p.notifyHour || '09:00',
+    isRecurring: p.isRecurring !== undefined ? p.isRecurring : (p.recurrence ? p.recurrence !== 'once' : true),
+    recurrence: p.recurrence || 'yearly',
+    useFirstNameOnly
   };
-  people.push(person);
-  savePeople(people);
-  return person;
-};
+});
 
-export const updatePerson = (updatedPerson: Person): void => {
-  const people = getPeople();
-  const index = people.findIndex(p => p.id === updatedPerson.id);
-  if (index !== -1) {
-    people[index] = updatedPerson;
-    savePeople(people);
-  }
-};
-
-export const deletePerson = (id: string): void => {
-  const people = getPeople();
-  const filtered = people.filter(p => p.id !== id);
-  savePeople(filtered);
-};
-
-export const getSettings = (): AppSettings => {
-  const data = localStorage.getItem(SETTINGS_STORAGE_KEY);
-  const settings: AppSettings = data ? JSON.parse(data) : {
+const applySettingsDefaults = (raw: Partial<AppSettings> | null): AppSettings => {
+  const settings: AppSettings = raw && Object.keys(raw).length ? (raw as AppSettings) : {
     geminiApiKey: '',
     senderGender: 'Male',
     useGoogleAuth: false,
@@ -257,12 +246,145 @@ export const getSettings = (): AppSettings => {
   if (!settings.groqModel || !(GROQ_MODELS as readonly string[]).includes(settings.groqModel)) {
     settings.groqModel = DEFAULT_GROQ_MODEL;
   }
+  // OpenRouter's free models are fetched live (slugs change), so don't validate against a
+  // static list — only fill a default when empty.
+  if (!settings.openRouterModel) settings.openRouterModel = DEFAULT_OPENROUTER_MODEL;
   if (!settings.senderGender) settings.senderGender = 'Male';
   return settings;
 };
 
+const loadPlainPeople = (): Person[] => {
+  const data = localStorage.getItem(PEOPLE_STORAGE_KEY);
+  if (!data) {
+    localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(defaultPeople));
+    return defaultPeople;
+  }
+  return migratePeople(JSON.parse(data) as any[]);
+};
+
+const loadPlainSettings = (): AppSettings =>
+  applySettingsDefaults(localStorage.getItem(SETTINGS_STORAGE_KEY) ? JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY)!) : null);
+
+// Persist the current caches: one encrypted blob when locked, else the plain keys.
+const persist = (): void => {
+  if (isVaultEnabled() && isVaultUnlocked()) {
+    const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache });
+    void encryptString(payload).then(blob => localStorage.setItem(VAULT_DATA_KEY, blob));
+  } else {
+    if (peopleCache) localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleCache));
+    if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
+  }
+};
+
+// Call once on app start. Returns 'locked' if the App Lock is on and an unlock is needed;
+// otherwise loads plain data into the caches and returns 'ready'.
+export const initStorage = (): 'ready' | 'locked' => {
+  if (isVaultEnabled()) return 'locked';
+  peopleCache = loadPlainPeople();
+  settingsCache = loadPlainSettings();
+  return 'ready';
+};
+
+// Unlock the encrypted vault with a passphrase, decrypting data into the caches.
+export const unlockStorage = async (passphrase: string): Promise<boolean> => {
+  if (!(await loadVaultKey(passphrase))) return false;
+  const blob = localStorage.getItem(VAULT_DATA_KEY);
+  if (!blob) {
+    // Vault enabled but no encrypted data: start empty. Do NOT seed mock defaults here —
+    // that would later overwrite the encrypted store with mock data.
+    peopleCache = [];
+    settingsCache = applySettingsDefaults(null);
+    return true;
+  }
+  try {
+    const data = JSON.parse(await decryptString(blob)) as { people?: any[]; settings?: Partial<AppSettings> };
+    peopleCache = migratePeople(data.people || []);
+    settingsCache = applySettingsDefaults(data.settings || null);
+    return true;
+  } catch {
+    clearVaultKey(); // wrong passphrase: GCM decryption failed
+    return false;
+  }
+};
+
+// Turn on the App Lock: derive a key, encrypt the current data, delete the plaintext copies.
+// The encrypted copy is written and confirmed BEFORE removing the plaintext, so there is no
+// window where the data exists in neither place.
+export const enableLock = async (passphrase: string): Promise<void> => {
+  if (!peopleCache) peopleCache = loadPlainPeople();
+  if (!settingsCache) settingsCache = loadPlainSettings();
+  await setupVaultKey(passphrase);
+  const payload = JSON.stringify({ people: peopleCache, settings: settingsCache });
+  const blob = await encryptString(payload);
+  localStorage.setItem(VAULT_DATA_KEY, blob);
+  if (!localStorage.getItem(VAULT_DATA_KEY)) {
+    throw new Error('Failed to persist encrypted vault; keeping plaintext.');
+  }
+  // Encrypted copy confirmed — now it is safe to delete the plaintext.
+  localStorage.removeItem(PEOPLE_STORAGE_KEY);
+  localStorage.removeItem(SETTINGS_STORAGE_KEY);
+};
+
+// Turn off the App Lock: write the data back as plaintext and remove the vault.
+// Only writes caches that are actually loaded, so it can never overwrite data with [].
+export const disableLock = (): void => {
+  if (peopleCache) localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleCache));
+  if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
+  localStorage.removeItem(VAULT_DATA_KEY);
+  removeVault();
+};
+
+export const isLockEnabled = (): boolean => isVaultEnabled();
+
+export const getPeople = (): Person[] => {
+  if (peopleCache) return peopleCache;
+  if (!isVaultEnabled()) {
+    peopleCache = loadPlainPeople();
+    return peopleCache;
+  }
+  return []; // locked and not yet unlocked
+};
+
+export const savePeople = (people: Person[]): void => {
+  peopleCache = people;
+  persist();
+};
+
+export const addPerson = (newPerson: Omit<Person, 'id'>): Person => {
+  const person: Person = {
+    ...newPerson,
+    id: `person-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
+  };
+  savePeople([...getPeople(), person]);
+  return person;
+};
+
+export const updatePerson = (updatedPerson: Person): void => {
+  const people = getPeople();
+  const index = people.findIndex(p => p.id === updatedPerson.id);
+  if (index !== -1) {
+    const next = [...people];
+    next[index] = updatedPerson;
+    savePeople(next);
+  }
+};
+
+export const deletePerson = (id: string): void => {
+  savePeople(getPeople().filter(p => p.id !== id));
+};
+
+export const getSettings = (): AppSettings => {
+  if (settingsCache) return settingsCache;
+  if (!isVaultEnabled()) {
+    settingsCache = loadPlainSettings();
+    return settingsCache;
+  }
+  return applySettingsDefaults(null); // locked — return defaults (no secrets)
+};
+
 export const saveSettings = (settings: AppSettings): void => {
-  localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+  settingsCache = settings;
+  persist();
 };
 
 // Calculate age or years since start date

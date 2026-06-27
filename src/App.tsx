@@ -21,7 +21,9 @@ import {
   Bell,
   LogIn,
   Import,
-  CheckCircle
+  CheckCircle,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 import type { Person, AppSettings } from './services/storage';
@@ -32,6 +34,11 @@ import {
   deletePerson,
   getSettings,
   saveSettings,
+  initStorage,
+  unlockStorage,
+  enableLock,
+  disableLock,
+  isLockEnabled,
   calculateYears,
   getDaysToEvent,
   isEventToday,
@@ -44,11 +51,13 @@ import {
   GEMINI_MODELS,
   DEFAULT_GEMINI_MODEL,
   GROQ_MODELS,
-  DEFAULT_GROQ_MODEL
+  DEFAULT_GROQ_MODEL,
+  OPENROUTER_MODELS,
+  DEFAULT_OPENROUTER_MODEL
 } from './services/storage';
 import type { AiProvider } from './services/storage';
 
-import { generateHebrewBirthdayGreeting, testAiApiKey } from './services/gemini';
+import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels } from './services/gemini';
 import {
   fetchGoogleContacts,
   fetchGoogleCalendarEvents,
@@ -89,6 +98,8 @@ export default function App() {
     geminiModel: DEFAULT_GEMINI_MODEL,
     groqApiKey: '',
     groqModel: DEFAULT_GROQ_MODEL,
+    openRouterApiKey: '',
+    openRouterModel: DEFAULT_OPENROUTER_MODEL,
     senderGender: 'Male',
     useGoogleAuth: false,
     defaultNotifyHour: '09:00',
@@ -113,6 +124,11 @@ export default function App() {
   const [formIsRecurring, setFormIsRecurring] = useState(true);
   const [formRecurrence, setFormRecurrence] = useState<'yearly' | 'monthly' | 'weekly' | 'once'>('yearly');
   const [formUseFirstNameOnly, setFormUseFirstNameOnly] = useState(true);
+  // Proxy delivery (send the greeting to someone other than the celebrant)
+  const [formViaProxy, setFormViaProxy] = useState(false);
+  const [formProxyName, setFormProxyName] = useState('');
+  const [formProxyGender, setFormProxyGender] = useState<Person['gender']>('Male');
+  const [formCelebrantLink, setFormCelebrantLink] = useState('');
 
   // Calendar Navigation State
   const todayDate = new Date();
@@ -138,6 +154,10 @@ export default function App() {
   const [quickGender, setQuickGender] = useState<Person['gender']>('Male');
   const [quickYears, setQuickYears] = useState(25);
   const [quickUseFirstNameOnly, setQuickUseFirstNameOnly] = useState(true);
+  const [quickViaProxy, setQuickViaProxy] = useState(false);
+  const [quickProxyName, setQuickProxyName] = useState('');
+  const [quickProxyGender, setQuickProxyGender] = useState<Person['gender']>('Male');
+  const [quickCelebrantLink, setQuickCelebrantLink] = useState('');
 
   // Google OAuth access token (short-lived; kept in memory + sessionStorage for the session)
   const [googleAccessToken, setGoogleAccessToken] = useState<string | null>(null);
@@ -153,6 +173,19 @@ export default function App() {
 
   // Measured height of the sticky top bar, exposed as a CSS var for sticky offsets.
   const headerRef = useRef<HTMLElement>(null);
+  // Action to auto-run once an inline Google login completes (so the user doesn't have
+  // to go to Settings to connect, then come back).
+  const pendingGoogleActionRef = useRef<null | 'contacts' | 'calendar'>(null);
+
+  // App Lock: initialize storage; if encrypted, gate the app behind an unlock screen.
+  const [lockState, setLockState] = useState<'locked' | 'unlocked'>(() => initStorage() === 'locked' ? 'locked' : 'unlocked');
+  const [unlockInput, setUnlockInput] = useState('');
+  const [unlockError, setUnlockError] = useState('');
+  const [unlocking, setUnlocking] = useState(false);
+  const [lockEnabled, setLockEnabled] = useState(() => isLockEnabled());
+  const [newPassphrase, setNewPassphrase] = useState('');
+  const [confirmPassphrase, setConfirmPassphrase] = useState('');
+  const [lockSetupError, setLockSetupError] = useState('');
 
   // Calendar Sync state (real Google Calendar via Calendar API; shown on the calendar grid)
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
@@ -163,6 +196,11 @@ export default function App() {
   // Gemini key-test state (Settings)
   const [keyTestStatus, setKeyTestStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
   const [keyTestError, setKeyTestError] = useState('');
+
+  // Live list of OpenRouter free models (fetched when that provider is selected)
+  const [orModels, setOrModels] = useState<string[]>([]);
+  const [orModelsLoading, setOrModelsLoading] = useState(false);
+  const [orModelsError, setOrModelsError] = useState('');
 
   // Simulated Push Notification toast state
   const [toastNotification, setToastNotification] = useState<{
@@ -182,9 +220,9 @@ export default function App() {
     refreshPeopleList();
     setLocalSettings(getSettings());
 
-    // Restore the OAuth access token for this browser session (tokens are short-lived
-    // and not persisted to localStorage for security).
-    const savedToken = sessionStorage.getItem('birthday_greetings_google_token');
+    // Restore a saved OAuth access token so the Google connection persists across
+    // restarts (the token is short-lived ~1h; on expiry we prompt an inline re-login).
+    const savedToken = localStorage.getItem('birthday_greetings_google_token');
     if (savedToken) setGoogleAccessToken(savedToken);
 
     // Only surface an automatic push notification when there is a genuine event today.
@@ -208,6 +246,51 @@ export default function App() {
     window.addEventListener('resize', setVar);
     return () => { ro.disconnect(); window.removeEventListener('resize', setVar); };
   }, []);
+
+  // After an inline Google login finishes (token becomes available), run whatever the
+  // user was trying to do (open contacts / sync calendar).
+  useEffect(() => {
+    if (!googleAccessToken) return;
+    const action = pendingGoogleActionRef.current;
+    if (!action) return;
+    pendingGoogleActionRef.current = null;
+    if (action === 'contacts') {
+      openContactsModal(contactsTarget);
+    } else {
+      setActiveTab('calendar');
+      syncGoogleCalendar();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleAccessToken]);
+
+  const handleGoogleLoginFor = (action: 'contacts' | 'calendar') => {
+    pendingGoogleActionRef.current = action;
+    handleGoogleLogin();
+  };
+
+  // Fetch OpenRouter's live free-model list when that provider is selected, and auto-correct
+  // the chosen model if it's no longer offered for free.
+  useEffect(() => {
+    if (settings.aiProvider !== 'openrouter' || orModels.length) return;
+    setOrModelsLoading(true);
+    setOrModelsError('');
+    fetchOpenRouterFreeModels()
+      .then(list => {
+        setOrModels(list);
+        if (list.length && !list.includes(settings.openRouterModel || '')) {
+          const preferred =
+            list.find(m => m.includes('gpt-oss-120b')) ||
+            list.find(m => m.includes('gpt-oss')) ||
+            list.find(m => m.includes('gemma-3')) ||
+            list.find(m => m.includes('gemma')) ||
+            list[0];
+          setLocalSettings(s => ({ ...s, openRouterModel: preferred }));
+        }
+      })
+      .catch(e => setOrModelsError(e?.message || String(e)))
+      .finally(() => setOrModelsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.aiProvider]);
 
   // Play chimes
   const playNotificationSound = () => {
@@ -279,7 +362,7 @@ export default function App() {
 
         // Persist the access token for this session so we can call Calendar/People APIs.
         setGoogleAccessToken(tokenResponse.access_token);
-        sessionStorage.setItem('birthday_greetings_google_token', tokenResponse.access_token);
+        localStorage.setItem('birthday_greetings_google_token', tokenResponse.access_token);
 
         const updatedSettings = {
           ...settings,
@@ -322,7 +405,7 @@ export default function App() {
     saveSettings(updatedSettings);
     localStorage.removeItem('birthday_greetings_google_auth_active');
     setGoogleAccessToken(null);
-    sessionStorage.removeItem('birthday_greetings_google_token');
+    localStorage.removeItem('birthday_greetings_google_token');
   };
 
   // Shared handler: surface a Google API error, dropping an expired token so the UI
@@ -331,7 +414,7 @@ export default function App() {
     if (err instanceof GoogleApiError) {
       if (err.status === 401) {
         setGoogleAccessToken(null);
-        sessionStorage.removeItem('birthday_greetings_google_token');
+        localStorage.removeItem('birthday_greetings_google_token');
       }
       setError(err.message);
     } else {
@@ -430,6 +513,48 @@ export default function App() {
     setTimeout(() => setSaveStatus('idle'), 3000);
   };
 
+  // Unlock the encrypted app with the passphrase, then load the decrypted data.
+  const handleUnlock = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setUnlocking(true);
+    setUnlockError('');
+    const ok = await unlockStorage(unlockInput);
+    setUnlocking(false);
+    if (ok) {
+      setUnlockInput('');
+      setLockState('unlocked');
+      refreshPeopleList();
+      setLocalSettings(getSettings());
+    } else {
+      setUnlockError('סיסמה שגויה. נסה/י שוב.');
+    }
+  };
+
+  // Enable the App Lock: encrypt current data behind a new passphrase.
+  const handleEnableLock = async () => {
+    setLockSetupError('');
+    if (newPassphrase.length < 4) {
+      setLockSetupError('הסיסמה חייבת להכיל לפחות 4 תווים.');
+      return;
+    }
+    if (newPassphrase !== confirmPassphrase) {
+      setLockSetupError('הסיסמאות אינן תואמות.');
+      return;
+    }
+    await enableLock(newPassphrase);
+    setLockEnabled(true);
+    setNewPassphrase('');
+    setConfirmPassphrase('');
+  };
+
+  // Disable the App Lock: store data as plaintext again.
+  const handleDisableLock = () => {
+    if (!window.confirm('לבטל את נעילת האפליקציה? הנתונים יישמרו ללא הצפנה במכשיר.')) return;
+    disableLock();
+    setLockEnabled(false);
+  };
+
+
   // Reset the add/edit form back to a blank "new event" state.
   const resetForm = () => {
     setEditingPerson(null);
@@ -446,6 +571,10 @@ export default function App() {
     setFormIsRecurring(true);
     setFormRecurrence('yearly');
     setFormUseFirstNameOnly(true);
+    setFormViaProxy(false);
+    setFormProxyName('');
+    setFormProxyGender('Male');
+    setFormCelebrantLink('');
   };
 
   // Start a fresh event from the list (no need to save the current one first).
@@ -473,7 +602,10 @@ export default function App() {
       notifyHour: formNotifyHour,
       isRecurring: formIsRecurring,
       recurrence: formIsRecurring ? formRecurrence : 'once',
-      useFirstNameOnly: formUseFirstNameOnly
+      useFirstNameOnly: formUseFirstNameOnly,
+      proxyName: formViaProxy && formProxyName.trim() ? formProxyName.trim() : undefined,
+      proxyGender: formViaProxy ? formProxyGender : undefined,
+      celebrantRelationToProxy: formViaProxy && formCelebrantLink.trim() ? formCelebrantLink.trim() : undefined
     };
 
     if (editingPerson) {
@@ -510,7 +642,10 @@ export default function App() {
     setFormIsRecurring(person.isRecurring);
     setFormRecurrence(person.recurrence);
     setFormUseFirstNameOnly(person.useFirstNameOnly || false);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setFormViaProxy(!!person.proxyName);
+    setFormProxyName(person.proxyName || '');
+    setFormProxyGender(person.proxyGender || 'Male');
+    setFormCelebrantLink(person.celebrantRelationToProxy || '');
   };
 
   // Generate Greeting Action (Stored Person)
@@ -573,7 +708,10 @@ export default function App() {
       notifyHour: '09:00',
       isRecurring: false,
       recurrence: 'once',
-      useFirstNameOnly: quickUseFirstNameOnly
+      useFirstNameOnly: quickUseFirstNameOnly,
+      proxyName: quickViaProxy && quickProxyName.trim() ? quickProxyName.trim() : undefined,
+      proxyGender: quickViaProxy ? quickProxyGender : undefined,
+      celebrantRelationToProxy: quickViaProxy && quickCelebrantLink.trim() ? quickCelebrantLink.trim() : undefined
     };
 
     try {
@@ -613,7 +751,10 @@ export default function App() {
         notifyHour: '09:00',
         isRecurring: false,
         recurrence: 'once',
-        useFirstNameOnly: quickUseFirstNameOnly
+        useFirstNameOnly: quickUseFirstNameOnly,
+        proxyName: quickViaProxy && quickProxyName.trim() ? quickProxyName.trim() : undefined,
+        proxyGender: quickViaProxy ? quickProxyGender : undefined,
+        celebrantRelationToProxy: quickViaProxy && quickCelebrantLink.trim() ? quickCelebrantLink.trim() : undefined
       };
     }
 
@@ -854,6 +995,34 @@ export default function App() {
       );
     });
   };
+
+  // App Lock screen — shown when data is encrypted and not yet unlocked this session.
+  if (lockState === 'locked') {
+    return (
+      <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
+        <form onSubmit={handleUnlock} className="glass-card section-panel" style={{ maxWidth: '380px', width: '100%', textAlign: 'center' }}>
+          <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🔒</div>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '0.5rem' }}>האפליקציה נעולה</h2>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
+            הזן/י את סיסמת הנעילה כדי לפתוח את הנתונים המוצפנים.
+          </p>
+          <input
+            type="password"
+            className="form-input"
+            autoFocus
+            placeholder="סיסמה"
+            value={unlockInput}
+            onChange={(e) => setUnlockInput(e.target.value)}
+            style={{ marginBottom: '0.75rem', textAlign: 'center' }}
+          />
+          {unlockError && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{unlockError}</p>}
+          <button type="submit" className="btn btn-primary" disabled={unlocking || !unlockInput}>
+            {unlocking ? 'פותח...' : 'פתח/י 🔓'}
+          </button>
+        </form>
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -1209,6 +1378,63 @@ export default function App() {
                   )}
                 </div>
 
+                {/* Proxy delivery */}
+                <div className="form-group" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
+                  <label className="gender-radio-label">
+                    <input
+                      type="checkbox"
+                      checked={formViaProxy}
+                      onChange={(e) => setFormViaProxy(e.target.checked)}
+                      style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
+                    />
+                    <span>שליחת הברכה דרך מישהו אחר (פרוקסי) 📨</span>
+                  </label>
+                  {formViaProxy && (
+                    <div style={{ marginTop: '0.6rem', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, lineHeight: '1.4' }}>
+                        הברכה תופנה אל מקבל/ת הברכה (למשל אח/ות או קבוצת משפחה) ותברך אותו/ה לרגל האירוע של <strong>{formFirstName || 'בעל האירוע'}</strong>. הטלפון למעלה ישמש לשליחה אל מקבל/ת הברכה.
+                      </p>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>שם מקבל/ת הברכה (למי לשלוח)</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="למשל: דני / משפחת כהן"
+                          value={formProxyName}
+                          onChange={(e) => setFormProxyName(e.target.value)}
+                        />
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>מגדר מקבל/ת הברכה</label>
+                        <div className="gender-radio-group">
+                          <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
+                            <input type="radio" name="proxyGender" className="gender-radio-input" checked={formProxyGender === 'Male'} onChange={() => setFormProxyGender('Male')} />
+                            <span>זכר</span>
+                          </label>
+                          <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
+                            <input type="radio" name="proxyGender" className="gender-radio-input" checked={formProxyGender === 'Female'} onChange={() => setFormProxyGender('Female')} />
+                            <span>נקבה</span>
+                          </label>
+                          <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
+                            <input type="radio" name="proxyGender" className="gender-radio-input" checked={formProxyGender === 'Couple'} onChange={() => setFormProxyGender('Couple')} />
+                            <span>זוג / רבים</span>
+                          </label>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>הקשר של בעל/ת האירוע למקבל/ת הברכה (אופציונלי)</label>
+                        <input
+                          type="text"
+                          className="form-input"
+                          placeholder="למשל: הבן שלך, הנכדה שלכם"
+                          value={formCelebrantLink}
+                          onChange={(e) => setFormCelebrantLink(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
                 <div className="form-group" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)' }}>
                     <Bell size={14} />
@@ -1308,16 +1534,36 @@ export default function App() {
                   </div>
                 </div>
 
-                <div className="search-container" style={{ marginBottom: 0 }}>
-                  <input
-                    type="text"
-                    className="form-input search-input"
-                    placeholder="חיפוש לפי שם, קשר, אירוע או הערות..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    id="search-contacts-input"
-                  />
-                  <Search className="search-icon" size={18} />
+                <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
+                  <div className="search-container" style={{ marginBottom: 0, flex: 1 }}>
+                    <input
+                      type="text"
+                      className="form-input search-input"
+                      placeholder="חיפוש לפי שם, קשר, אירוע או הערות..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      id="search-contacts-input"
+                    />
+                    <Search className="search-icon" size={18} />
+                  </div>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="גלילה למעלה"
+                    onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <ArrowUp size={18} />
+                  </button>
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title="גלילה לתחתית"
+                    onClick={() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })}
+                    style={{ flexShrink: 0 }}
+                  >
+                    <ArrowDown size={18} />
+                  </button>
                 </div>
               </div>
 
@@ -1480,9 +1726,9 @@ export default function App() {
               {(() => {
                 if (calendarError === 'not-connected') {
                   return (
-                    <button type="button" className="btn btn-primary" style={{ width: 'auto', fontSize: '0.8rem', padding: '0.4rem 0.8rem' }} onClick={() => setActiveTab('settings')}>
+                    <button type="button" className="btn btn-primary" style={{ width: 'auto', fontSize: '0.8rem', padding: '0.4rem 0.8rem', background: '#4285F4' }} onClick={() => handleGoogleLoginFor('calendar')} disabled={isLoggingIn}>
                       <LogIn size={14} />
-                      <span>התחבר/י ל-Google בהגדרות</span>
+                      <span>{isLoggingIn ? 'מתחבר...' : 'התחבר/י עם Google'}</span>
                     </button>
                   );
                 }
@@ -1666,6 +1912,55 @@ export default function App() {
                 </label>
               </div>
 
+              <label className="gender-radio-label" style={{ fontSize: '0.8rem', marginTop: '0.25rem' }}>
+                <input
+                  type="checkbox"
+                  checked={quickViaProxy}
+                  onChange={(e) => setQuickViaProxy(e.target.checked)}
+                  style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
+                />
+                <span>שליחה דרך מישהו אחר (פרוקסי) 📨</span>
+              </label>
+              {quickViaProxy && (
+                <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.6rem', alignItems: 'end', padding: '0.6rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>שם מקבל/ת הברכה</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                      placeholder="למשל: דני / משפחת כהן"
+                      value={quickProxyName}
+                      onChange={(e) => setQuickProxyName(e.target.value)}
+                    />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>מגדר המקבל/ת</label>
+                    <select
+                      className="form-select"
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                      value={quickProxyGender}
+                      onChange={(e) => setQuickProxyGender(e.target.value as Person['gender'])}
+                    >
+                      <option value="Male">זכר</option>
+                      <option value="Female">נקבה</option>
+                      <option value="Couple">זוג / רבים</option>
+                    </select>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>הקשר של בעל/ת האירוע למקבל/ת (אופציונלי)</label>
+                    <input
+                      type="text"
+                      className="form-input"
+                      style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
+                      placeholder="למשל: הבן שלך, הנכדה שלכם"
+                      value={quickCelebrantLink}
+                      onChange={(e) => setQuickCelebrantLink(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
               <button
                 type="button"
                 onClick={handleGenerateOnDemand}
@@ -1674,7 +1969,7 @@ export default function App() {
                 disabled={isGenerating}
               >
                 <Sparkles size={14} />
-                <span>ייצר ברכה מהירה ב-Gemini ✨</span>
+                <span>ייצר ברכה מהירה באמצעות AI ✨</span>
               </button>
             </div>
 
@@ -1768,7 +2063,7 @@ export default function App() {
                       onClick={() => handleRegenerateGreeting(greetingTone, customGreetingDetails)}
                       disabled={!quickFirstName.trim() && !customGreetingDetails.trim()}
                     >
-                      עדכן ונסח מחדש ב-Gemini 🪄
+                      עדכן ונסח מחדש באמצעות AI 🪄
                     </button>
                   </div>
                 </div>
@@ -1867,6 +2162,53 @@ export default function App() {
               )}
             </div>
 
+            {/* App Lock (at-rest encryption) */}
+            <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(0, 230, 118, 0.15)' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <span>🔒</span>
+                <span>נעילת אפליקציה (הצפנת נתונים)</span>
+              </h3>
+              <p className="settings-description" style={{ fontSize: '0.85rem', marginBottom: '1rem', lineHeight: '1.5' }}>
+                הצפנת כל הנתונים במכשיר (אנשי קשר, מספרי טלפון ומפתחות API) באמצעות סיסמה. בכל פתיחה של האפליקציה תידרש/י להזין אותה.
+              </p>
+
+              {lockEnabled ? (
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <span style={{ color: 'var(--success)', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <CheckCircle size={16} />
+                    הנעילה פעילה — הנתונים מוצפנים.
+                  </span>
+                  <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={handleDisableLock}>
+                    בטל/י נעילה
+                  </button>
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="סיסמת נעילה חדשה"
+                    value={newPassphrase}
+                    onChange={(e) => { setNewPassphrase(e.target.value); setLockSetupError(''); }}
+                  />
+                  <input
+                    type="password"
+                    className="form-input"
+                    placeholder="אישור סיסמה"
+                    value={confirmPassphrase}
+                    onChange={(e) => { setConfirmPassphrase(e.target.value); setLockSetupError(''); }}
+                  />
+                  {lockSetupError && <p style={{ color: 'var(--danger)', fontSize: '0.82rem', margin: 0 }}>{lockSetupError}</p>}
+                  <p style={{ fontSize: '0.72rem', color: 'var(--warning)', margin: 0, lineHeight: '1.4' }}>
+                    ⚠️ שמור/י את הסיסמה במקום בטוח — אם תישכח, לא ניתן יהיה לשחזר את הנתונים המוצפנים.
+                  </p>
+                  <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={handleEnableLock} disabled={!newPassphrase || !confirmPassphrase}>
+                    הפעל/י נעילה
+                  </button>
+                </div>
+              )}
+            </div>
+
             <form onSubmit={handleSaveSettings}>
               <div className="form-group" style={{ paddingBottom: '1.25rem', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
                 <label className="form-label">המגדר שלך (כותב/ת הברכה) — חשוב לדקדוק העברי</label>
@@ -1895,6 +2237,18 @@ export default function App() {
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
                   הברכות נכתבות בגוף ראשון — הגדרה זו קובעת אם ייכתב "מאחל" או "מאחלת". זכור/י ללחוץ "שמור הגדרות".
                 </p>
+
+                <label className="form-label" style={{ marginTop: '0.9rem' }}>השם שלך (לחתימת הברכה)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="למשל: דנה"
+                  value={settings.senderName || ''}
+                  onChange={(e) => setLocalSettings({ ...settings, senderName: e.target.value })}
+                />
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                  אם תזין/י שם, הברכות ייחתמו בו (למשל: "באהבה, דנה"). השאר/י ריק לברכה ללא חתימה.
+                </p>
               </div>
 
               <div className="form-group">
@@ -1920,18 +2274,26 @@ export default function App() {
                     />
                     <span>Groq (חינמי) ⚡</span>
                   </label>
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="aiProvider"
+                      className="gender-radio-input"
+                      checked={settings.aiProvider === 'openrouter'}
+                      onChange={() => { setLocalSettings({ ...settings, aiProvider: 'openrouter' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                    />
+                    <span>OpenRouter (Gemma חינמי) 🧩</span>
+                  </label>
                 </div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
                   לכל ספק מפתח API נפרד. ללא מפתח — האפליקציה משתמשת בברכות תבנית מובנות (חינם, ללא AI).
                 </p>
               </div>
 
-              {(settings.aiProvider || 'gemini') === 'gemini' ? (
+              {(settings.aiProvider || 'gemini') === 'gemini' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="input-api-key">
-                      <span>מפתח API של Google Gemini</span>
-                    </label>
+                    <label className="form-label" htmlFor="input-api-key"><span>מפתח API של Google Gemini</span></label>
                     <div className="api-key-input-container">
                       <input
                         id="input-api-key"
@@ -1940,42 +2302,28 @@ export default function App() {
                         placeholder="AIzaSy..."
                         style={{ paddingLeft: '3rem' }}
                         value={settings.geminiApiKey}
-                        onChange={(e) => {
-                          setLocalSettings({ ...settings, geminiApiKey: e.target.value });
-                          setKeyTestStatus('idle');
-                          setKeyTestError('');
-                        }}
+                        onChange={(e) => { setLocalSettings({ ...settings, geminiApiKey: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
                       />
                       <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
                         {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                      🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.
-                    </p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.</p>
                   </div>
-
                   <div className="form-group">
                     <label className="form-label" htmlFor="select-gemini-model">מודל Gemini</label>
-                    <select
-                      id="select-gemini-model"
-                      className="form-select"
-                      value={settings.geminiModel || DEFAULT_GEMINI_MODEL}
-                      onChange={(e) => { setLocalSettings({ ...settings, geminiModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
-                    >
+                    <select id="select-gemini-model" className="form-select" value={settings.geminiModel || DEFAULT_GEMINI_MODEL} onChange={(e) => { setLocalSettings({ ...settings, geminiModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {GEMINI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                      אם מתקבלת שגיאת מכסה (429 / quota), נסה/י מודל אחר — זמינות המכסה החינמית משתנה לפי חשבון ואזור.
-                    </p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>אם מתקבלת שגיאת מכסה (429 / quota), נסה/י מודל אחר — זמינות המכסה החינמית משתנה לפי חשבון ואזור.</p>
                   </div>
                 </>
-              ) : (
+              )}
+
+              {settings.aiProvider === 'groq' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="input-groq-key">
-                      <span>מפתח API של Groq</span>
-                    </label>
+                    <label className="form-label" htmlFor="input-groq-key"><span>מפתח API של Groq</span></label>
                     <div className="api-key-input-container">
                       <input
                         id="input-groq-key"
@@ -1984,33 +2332,55 @@ export default function App() {
                         placeholder="gsk_..."
                         style={{ paddingLeft: '3rem' }}
                         value={settings.groqApiKey || ''}
-                        onChange={(e) => {
-                          setLocalSettings({ ...settings, groqApiKey: e.target.value });
-                          setKeyTestStatus('idle');
-                          setKeyTestError('');
-                        }}
+                        onChange={(e) => { setLocalSettings({ ...settings, groqApiKey: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
                       />
                       <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
                         {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                      🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.
-                    </p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.</p>
                   </div>
-
                   <div className="form-group">
                     <label className="form-label" htmlFor="select-groq-model">מודל Groq</label>
-                    <select
-                      id="select-groq-model"
-                      className="form-select"
-                      value={settings.groqModel || DEFAULT_GROQ_MODEL}
-                      onChange={(e) => { setLocalSettings({ ...settings, groqModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
-                    >
+                    <select id="select-groq-model" className="form-select" value={settings.groqModel || DEFAULT_GROQ_MODEL} onChange={(e) => { setLocalSettings({ ...settings, groqModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {GROQ_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}><strong>gpt-oss-120b</strong> נותן את התוצאות הטובות ביותר בעברית. הדגמים הקטנים חלשים יותר.</p>
+                  </div>
+                </>
+              )}
+
+              {settings.aiProvider === 'openrouter' && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="input-or-key"><span>מפתח API של OpenRouter</span></label>
+                    <div className="api-key-input-container">
+                      <input
+                        id="input-or-key"
+                        type={showApiKey ? 'text' : 'password'}
+                        className="form-input numbers-font"
+                        placeholder="sk-or-..."
+                        style={{ paddingLeft: '3rem' }}
+                        value={settings.openRouterApiKey || ''}
+                        onChange={(e) => { setLocalSettings({ ...settings, openRouterApiKey: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                      />
+                      <button type="button" className="api-key-toggle-btn" onClick={() => setShowApiKey(!showApiKey)}>
+                        {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך. OpenRouter מאפשר שימוש חינמי בדגמי Gemma הפתוחים.</p>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="select-or-model">
+                      מודל OpenRouter {orModelsLoading && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(טוען רשימה...)</span>}
+                    </label>
+                    <select id="select-or-model" className="form-select" value={settings.openRouterModel || DEFAULT_OPENROUTER_MODEL} onChange={(e) => { setLocalSettings({ ...settings, openRouterModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
+                      {Array.from(new Set([...(orModels.length ? orModels : [...OPENROUTER_MODELS]), ...(settings.openRouterModel ? [settings.openRouterModel] : [])])).map(m => <option key={m} value={m}>{m}</option>)}
+                    </select>
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                      <strong>gpt-oss-120b</strong> נותן את התוצאות הטובות ביותר בעברית. הדגמים הקטנים (gpt-oss-20b / llama) חלשים יותר.
+                      {orModelsError
+                        ? `לא ניתן לטעון רשימת מודלים (${orModelsError}); מוצגת רשימת ברירת מחדל.`
+                        : 'הרשימה נטענת אוטומטית מ-OpenRouter ומכילה רק מודלים חינמיים (:free) הזמינים כעת. gpt-oss / gemma מומלצים לעברית.'}
                     </p>
                   </div>
                 </>
@@ -2025,7 +2395,7 @@ export default function App() {
                   className="btn btn-secondary"
                   style={{ width: 'auto' }}
                   onClick={handleTestGeminiKey}
-                  disabled={keyTestStatus === 'testing' || !((settings.aiProvider === 'groq' ? settings.groqApiKey : settings.geminiApiKey) || '').trim()}
+                  disabled={keyTestStatus === 'testing' || !((settings.aiProvider === 'groq' ? settings.groqApiKey : settings.aiProvider === 'openrouter' ? settings.openRouterApiKey : settings.geminiApiKey) || '').trim()}
                 >
                   {keyTestStatus === 'testing' ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2062,17 +2432,25 @@ export default function App() {
 
             <div style={{ marginTop: '3rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>איך משיגים מפתח API בחינם?</h3>
-              {(settings.aiProvider || 'gemini') === 'gemini' ? (
+              {(settings.aiProvider || 'gemini') === 'gemini' && (
                 <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <li>כנס לאתר <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Google AI Studio</a> והתחבר עם חשבון הגוגל שלך.</li>
                   <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח שנוצר והדבק אותו כאן.</li>
-                  <li>אם מתקבלת שגיאת מכסה (429) — נסה/י מודל אחר, או עבור/י ל-Groq (חינמי) למעלה.</li>
+                  <li>אם מתקבלת שגיאת מכסה (429) — נסה/י מודל אחר, או עבור/י ל-Groq / OpenRouter למעלה.</li>
                 </ol>
-              ) : (
+              )}
+              {settings.aiProvider === 'groq' && (
                 <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <li>כנס לאתר <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Groq Console</a> והתחבר (חינם, ניתן עם חשבון Google).</li>
                   <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח (מתחיל ב-<span className="numbers-font">gsk_</span>) והדבק אותו כאן.</li>
                   <li>לחץ/י "בדוק/י מפתח" כדי לוודא שהכול עובד. Groq חינמי לחלוטין.</li>
+                </ol>
+              )}
+              {settings.aiProvider === 'openrouter' && (
+                <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <li>כנס לאתר <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>OpenRouter</a> והתחבר (חינם, ניתן עם חשבון Google).</li>
+                  <li>לחץ על <strong>Create Key</strong>, העתק את המפתח (מתחיל ב-<span className="numbers-font">sk-or-</span>) והדבק אותו כאן.</li>
+                  <li>בחר/י מודל <strong>:free</strong> (כמו gemma-3-27b) ולחץ/י "בדוק/י מפתח". לדגמים החינמיים יש מגבלת קצב.</li>
                 </ol>
               )}
             </div>
@@ -2233,7 +2611,7 @@ export default function App() {
                   disabled={isGenerating}
                 >
                   <Sparkles size={14} />
-                  <span>ייצר ברכה מהירה ב-Gemini ✨</span>
+                  <span>ייצר ברכה מהירה באמצעות AI ✨</span>
                 </button>
               </div>
             )}
@@ -2329,7 +2707,7 @@ export default function App() {
                       onClick={() => handleRegenerateGreeting(greetingTone, customGreetingDetails)}
                       disabled={!greetingText && isQuickMode}
                     >
-                      עדכן ונסח מחדש ב-Gemini 🪄
+                      עדכן ונסח מחדש באמצעות AI 🪄
                     </button>
                   </div>
                 </div>
@@ -2392,16 +2770,17 @@ export default function App() {
             {contactsError === 'not-connected' ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: '1.5' }}>
-                  כדי לייבא אנשי קשר אמיתיים, התחבר/י תחילה לחשבון Google שלך במסך ההגדרות.
+                  כדי לייבא אנשי קשר אמיתיים, התחבר/י לחשבון Google שלך.
                 </p>
                 <button
                   type="button"
                   className="btn btn-primary"
-                  style={{ width: 'auto' }}
-                  onClick={() => { setShowContactsModal(false); setActiveTab('settings'); }}
+                  style={{ width: 'auto', background: '#4285F4' }}
+                  onClick={() => handleGoogleLoginFor('contacts')}
+                  disabled={isLoggingIn}
                 >
                   <LogIn size={16} />
-                  <span>עבור/י להגדרות</span>
+                  <span>{isLoggingIn ? 'מתחבר...' : 'התחבר/י עם Google'}</span>
                 </button>
               </div>
             ) : contactsLoading ? (
