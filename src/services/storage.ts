@@ -198,6 +198,10 @@ const defaultPeople: Person[] = [
 // as a single encrypted blob; otherwise as the original plain localStorage keys.
 
 const VAULT_DATA_KEY = 'birthday_greetings_vault_data';
+// A redundant "last known good (non-empty)" copy of the events, used to self-heal if the
+// primary store is ever emptied. Only written while unlocked/plaintext, and removed when
+// the App Lock is enabled (so it never leaks past the encryption).
+const PEOPLE_MIRROR_KEY = 'birthday_greetings_people_mirror';
 
 let peopleCache: Person[] | null = null;
 let settingsCache: AppSettings | null = null;
@@ -253,27 +257,60 @@ const applySettingsDefaults = (raw: Partial<AppSettings> | null): AppSettings =>
   return settings;
 };
 
+// Read events from a JSON array, returning [] if it doesn't parse to a non-empty array.
+const parsePeople = (raw: string | null): Person[] => {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? migratePeople(arr) : [];
+  } catch {
+    return [];
+  }
+};
+
 const loadPlainPeople = (): Person[] => {
-  const data = localStorage.getItem(PEOPLE_STORAGE_KEY);
-  if (!data) {
+  const primary = parsePeople(localStorage.getItem(PEOPLE_STORAGE_KEY));
+  if (primary.length > 0) {
+    // Keep the self-heal mirror current so a recovery copy always exists.
+    localStorage.setItem(PEOPLE_MIRROR_KEY, JSON.stringify(primary));
+    return primary;
+  }
+
+  // Primary is empty/absent — self-heal from the mirror before giving up.
+  const mirror = parsePeople(localStorage.getItem(PEOPLE_MIRROR_KEY));
+  if (mirror.length > 0) {
+    localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(mirror));
+    return mirror;
+  }
+
+  // Genuine first run (no data anywhere): seed the sample events.
+  if (localStorage.getItem(PEOPLE_STORAGE_KEY) === null) {
     localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(defaultPeople));
     return defaultPeople;
   }
-  return migratePeople(JSON.parse(data) as any[]);
+  return primary; // legitimately empty
 };
 
 const loadPlainSettings = (): AppSettings =>
   applySettingsDefaults(localStorage.getItem(SETTINGS_STORAGE_KEY) ? JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY)!) : null);
 
-// Persist the current caches: one encrypted blob when locked, else the plain keys.
+// Persist the current caches. When the App Lock is enabled, data goes ONLY into the
+// encrypted blob — never plaintext. When it's enabled but locked (no key in memory, e.g.
+// after a hot-reload), we skip writing entirely so a stale/plaintext copy can't clobber it.
 const persist = (): void => {
-  if (isVaultEnabled() && isVaultUnlocked()) {
-    const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache });
-    void encryptString(payload).then(blob => localStorage.setItem(VAULT_DATA_KEY, blob));
-  } else {
-    if (peopleCache) localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleCache));
-    if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
+  if (isVaultEnabled()) {
+    if (isVaultUnlocked()) {
+      const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache });
+      void encryptString(payload).then(blob => localStorage.setItem(VAULT_DATA_KEY, blob));
+    }
+    return;
   }
+  if (peopleCache) {
+    localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleCache));
+    // Keep the self-heal mirror in sync, but never overwrite it with an empty list.
+    if (peopleCache.length > 0) localStorage.setItem(PEOPLE_MIRROR_KEY, JSON.stringify(peopleCache));
+  }
+  if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
 };
 
 // Call once on app start. Returns 'locked' if the App Lock is on and an unlock is needed;
@@ -320,15 +357,19 @@ export const enableLock = async (passphrase: string): Promise<void> => {
   if (!localStorage.getItem(VAULT_DATA_KEY)) {
     throw new Error('Failed to persist encrypted vault; keeping plaintext.');
   }
-  // Encrypted copy confirmed — now it is safe to delete the plaintext.
+  // Encrypted copy confirmed — now it is safe to delete the plaintext (incl. the mirror).
   localStorage.removeItem(PEOPLE_STORAGE_KEY);
   localStorage.removeItem(SETTINGS_STORAGE_KEY);
+  localStorage.removeItem(PEOPLE_MIRROR_KEY);
 };
 
 // Turn off the App Lock: write the data back as plaintext and remove the vault.
 // Only writes caches that are actually loaded, so it can never overwrite data with [].
 export const disableLock = (): void => {
-  if (peopleCache) localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleCache));
+  if (peopleCache) {
+    localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(peopleCache));
+    if (peopleCache.length > 0) localStorage.setItem(PEOPLE_MIRROR_KEY, JSON.stringify(peopleCache));
+  }
   if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
   localStorage.removeItem(VAULT_DATA_KEY);
   removeVault();

@@ -202,14 +202,6 @@ export default function App() {
   const [orModelsLoading, setOrModelsLoading] = useState(false);
   const [orModelsError, setOrModelsError] = useState('');
 
-  // Simulated Push Notification toast state
-  const [toastNotification, setToastNotification] = useState<{
-    show: boolean;
-    title: string;
-    body: string;
-    person: Person;
-  } | null>(null);
-
   // Helper to refresh people list
   const refreshPeopleList = () => {
     setPeople(getPeople());
@@ -224,15 +216,6 @@ export default function App() {
     // restarts (the token is short-lived ~1h; on expiry we prompt an inline re-login).
     const savedToken = localStorage.getItem('birthday_greetings_google_token');
     if (savedToken) setGoogleAccessToken(savedToken);
-
-    // Only surface an automatic push notification when there is a genuine event today.
-    const timer = setTimeout(() => {
-      if (getPeople().some(p => isEventToday(p))) {
-        triggerDemoNotification();
-      }
-    }, 4000);
-
-    return () => clearTimeout(timer);
   }, []);
 
   // Track the sticky top bar's height so sticky offsets (sidebar form, list header) align.
@@ -291,52 +274,6 @@ export default function App() {
       .finally(() => setOrModelsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings.aiProvider]);
-
-  // Play chimes
-  const playNotificationSound = () => {
-    try {
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(523.25, ctx.currentTime);
-      osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.15);
-      osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.3);
-      osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.45);
-      
-      gain.gain.setValueAtTime(0.3, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.8);
-      
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      
-      osc.start();
-      osc.stop(ctx.currentTime + 0.8);
-    } catch (e) {
-      console.log('AudioContext could not start', e);
-    }
-  };
-
-  // Trigger Demo Push Notification
-  const triggerDemoNotification = () => {
-    const list = getPeople();
-    if (list.length === 0) return;
-    
-    const todayEvent = list.find(p => isEventToday(p)) || list[0];
-    
-    playNotificationSound();
-    setToastNotification({
-      show: true,
-      title: `התראת דחיפה (Push Notification) 🔔`,
-      body: `היום חל אירוע ${todayEvent.occasion} של ${todayEvent.firstName}! לחץ/י כדי להכין ברכה חכמה.`,
-      person: todayEvent
-    });
-
-    setTimeout(() => {
-      setToastNotification(prev => prev ? { ...prev, show: false } : null);
-    }, 8000);
-  };
 
   // Auto-toggles first name checkbox based on relationship type
   const handleRelationChange = (val: string) => {
@@ -1026,68 +963,6 @@ export default function App() {
 
   return (
     <div className="app-container">
-      {/* Simulated Push Notification Banner */}
-      {toastNotification && toastNotification.show && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: '20px',
-            left: '20px',
-            right: '20px',
-            zIndex: 9999,
-            maxWidth: '450px',
-            margin: '0 auto',
-            border: '2px solid var(--primary)',
-            background: '#13112a',
-            borderRadius: '16px',
-            boxShadow: '0 20px 40px rgba(0,0,0,0.8), 0 0 20px var(--primary-glow)',
-            animation: 'modal-enter 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)'
-          }}
-          className="glass-card section-panel"
-        >
-          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-            <div style={{ background: 'var(--primary-glow)', padding: '0.5rem', borderRadius: '10px', color: 'var(--primary)' }}>
-              <Bell size={24} style={{ animation: 'float 2s infinite' }} />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                <h4 style={{ fontWeight: 800, fontSize: '0.95rem', color: 'var(--text-primary)' }}>{toastNotification.title}</h4>
-                <button 
-                  onClick={() => setToastNotification(prev => prev ? { ...prev, show: false } : null)}
-                  className="icon-btn"
-                  style={{ padding: '0.2rem' }}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.4' }}>
-                {toastNotification.body}
-              </p>
-              <div style={{ display: 'flex', gap: '0.5rem' }}>
-                <button
-                  onClick={() => {
-                    setToastNotification(prev => prev ? { ...prev, show: false } : null);
-                    handleOpenGreeting(toastNotification.person);
-                  }}
-                  className="btn btn-primary"
-                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', width: 'auto' }}
-                >
-                  <Sparkles size={12} />
-                  <span>הכן ברכה כעת</span>
-                </button>
-                <button
-                  onClick={() => setToastNotification(prev => prev ? { ...prev, show: false } : null)}
-                  className="btn btn-secondary"
-                  style={{ padding: '0.35rem 0.75rem', fontSize: '0.8rem', width: 'auto' }}
-                >
-                  התעלם
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Dynamic Header */}
       <header ref={headerRef} className="app-header glass-card">
         <div className="logo-container">
@@ -1518,19 +1393,8 @@ export default function App() {
               <div className="list-sticky-header">
                 <div className="panel-header" style={{ marginBottom: '1rem' }}>
                   <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>לוח אירועים מתוכננים</h2>
-                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                    <button
-                      onClick={triggerDemoNotification}
-                      className="btn btn-secondary"
-                      style={{ padding: '0.45rem 0.8rem', fontSize: '0.8rem', width: 'auto' }}
-                      title="בדוק סימולציית התראות דחיפה"
-                    >
-                      <Bell size={12} />
-                      <span>התראה 🔔</span>
-                    </button>
-                    <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }} className="numbers-font">
-                      {filteredPeople.length} מתוך {people.length}
-                    </div>
+                  <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }} className="numbers-font">
+                    {filteredPeople.length} מתוך {people.length}
                   </div>
                 </div>
 
