@@ -60,6 +60,7 @@ import {
 import type { AiProvider } from './services/storage';
 
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels } from './services/gemini';
+import { scheduleEventNotifications } from './services/notifications';
 import {
   fetchGoogleContacts,
   fetchGoogleCalendarEvents,
@@ -227,6 +228,12 @@ export default function App() {
     const savedToken = localStorage.getItem('birthday_greetings_google_token');
     if (savedToken) setGoogleAccessToken(savedToken);
   }, []);
+
+  // Keep OS notifications in sync with the events (native/Android only; no-op on web).
+  // Reschedules on every add/edit/delete and on app start.
+  useEffect(() => {
+    scheduleEventNotifications(people);
+  }, [people]);
 
   // Track the sticky top bar's height so sticky offsets (sidebar form, list header) align.
   useEffect(() => {
