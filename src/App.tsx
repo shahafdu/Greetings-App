@@ -68,6 +68,7 @@ import {
 } from './services/google';
 import type { GoogleContact, GoogleCalendarEvent } from './services/google';
 import { fetchDeviceContacts, fetchDeviceCalendarEvents } from './services/nativeDevice';
+import { isBiometricEnabled, isBiometricSupported, enableBiometric, disableBiometric, biometricGetPassphrase } from './services/biometric';
 
 const HEBREW_MONTHS = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -198,6 +199,9 @@ export default function App() {
   const [newPassphrase, setNewPassphrase] = useState('');
   const [confirmPassphrase, setConfirmPassphrase] = useState('');
   const [lockSetupError, setLockSetupError] = useState('');
+  // Biometric unlock (Android fingerprint/face)
+  const [biometricSupported, setBiometricSupported] = useState(false);
+  const [useBiometricChecked, setUseBiometricChecked] = useState(false);
 
   // Calendar Sync state (real Google Calendar via Calendar API; shown on the calendar grid)
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
@@ -235,6 +239,15 @@ export default function App() {
   useEffect(() => {
     scheduleEventNotifications(people);
   }, [people]);
+
+  // Detect biometric availability, and auto-prompt fingerprint on the lock screen if enabled.
+  useEffect(() => {
+    isBiometricSupported().then(setBiometricSupported);
+    if (lockState === 'locked' && isBiometricEnabled()) {
+      handleBiometricUnlock();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Track the sticky top bar's height so sticky offsets (sidebar form, list header) align.
   useEffect(() => {
@@ -546,7 +559,25 @@ export default function App() {
     }
   };
 
-  // Enable the App Lock: encrypt current data behind a new passphrase.
+  // Unlock via fingerprint: retrieve the stored passphrase from the Keystore, then unlock.
+  const handleBiometricUnlock = async () => {
+    setUnlockError('');
+    const pass = await biometricGetPassphrase();
+    if (!pass) {
+      setUnlockError('האימות הביומטרי בוטל או נכשל — ניתן להזין סיסמה.');
+      return;
+    }
+    const ok = await unlockStorage(pass);
+    if (ok) {
+      setLockState('unlocked');
+      refreshPeopleList();
+      setLocalSettings(getSettings());
+    } else {
+      setUnlockError('האימות הצליח אך פתיחת הנתונים נכשלה.');
+    }
+  };
+
+  // Enable the App Lock: encrypt current data behind a new passphrase (+ optional biometric).
   const handleEnableLock = async () => {
     setLockSetupError('');
     if (newPassphrase.length < 4) {
@@ -558,15 +589,24 @@ export default function App() {
       return;
     }
     await enableLock(newPassphrase);
+    if (useBiometricChecked && biometricSupported) {
+      try {
+        await enableBiometric(newPassphrase);
+      } catch (err) {
+        console.error('Failed to enable biometric:', err);
+      }
+    }
     setLockEnabled(true);
     setNewPassphrase('');
     setConfirmPassphrase('');
+    setUseBiometricChecked(false);
   };
 
-  // Disable the App Lock: store data as plaintext again.
-  const handleDisableLock = () => {
+  // Disable the App Lock: store data as plaintext again and clear biometric.
+  const handleDisableLock = async () => {
     if (!window.confirm('לבטל את נעילת האפליקציה? הנתונים יישמרו ללא הצפנה במכשיר.')) return;
     disableLock();
+    await disableBiometric();
     setLockEnabled(false);
   };
 
@@ -1035,6 +1075,16 @@ export default function App() {
           <button type="submit" className="btn btn-primary" disabled={unlocking || !unlockInput}>
             {unlocking ? 'פותח...' : 'פתח/י 🔓'}
           </button>
+          {isBiometricEnabled() && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ marginTop: '0.75rem' }}
+              onClick={handleBiometricUnlock}
+            >
+              <span>פתח/י עם טביעת אצבע 👆</span>
+            </button>
+          )}
         </form>
       </div>
     );
@@ -2142,6 +2192,17 @@ export default function App() {
                     onChange={(e) => { setConfirmPassphrase(e.target.value); setLockSetupError(''); }}
                   />
                   {lockSetupError && <p style={{ color: 'var(--danger)', fontSize: '0.82rem', margin: 0 }}>{lockSetupError}</p>}
+                  {biometricSupported && (
+                    <label className="gender-radio-label" style={{ fontSize: '0.85rem' }}>
+                      <input
+                        type="checkbox"
+                        checked={useBiometricChecked}
+                        onChange={(e) => setUseBiometricChecked(e.target.checked)}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
+                      />
+                      <span>אפשר/י פתיחה גם בטביעת אצבע 👆</span>
+                    </label>
+                  )}
                   <p style={{ fontSize: '0.72rem', color: 'var(--warning)', margin: 0, lineHeight: '1.4' }}>
                     ⚠️ שמור/י את הסיסמה במקום בטוח — אם תישכח, לא ניתן יהיה לשחזר את הנתונים המוצפנים.
                   </p>

@@ -12,6 +12,7 @@ dependencies {
     implementation project(':capacitor-community-contacts')
     implementation project(':capacitor-local-notifications')
     implementation project(':capawesome-capacitor-google-sign-in')
+    implementation project(':capgo-capacitor-native-biometric')
     implementation project(':ebarooni-capacitor-calendar')
 
 }
