@@ -67,6 +67,7 @@ import {
   GoogleApiError
 } from './services/google';
 import type { GoogleContact, GoogleCalendarEvent } from './services/google';
+import { fetchDeviceContacts, fetchDeviceCalendarEvents } from './services/nativeDevice';
 
 const HEBREW_MONTHS = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
@@ -408,9 +409,13 @@ export default function App() {
   // Fetch contacts once and cache them (used both by the picker and for auto-matching
   // a phone number to a calendar event). Returns the freshly fetched list.
   const ensureContactsLoaded = async (): Promise<GoogleContact[]> => {
-    if (!googleAccessToken) return [];
     if (googleContacts.length > 0) return googleContacts;
-    const list = await fetchGoogleContacts(googleAccessToken);
+    let list: GoogleContact[] = [];
+    if (Capacitor.isNativePlatform()) {
+      list = await fetchDeviceContacts();
+    } else if (googleAccessToken) {
+      list = await fetchGoogleContacts(googleAccessToken);
+    }
     setGoogleContacts(list);
     return list;
   };
@@ -422,6 +427,19 @@ export default function App() {
     setShowContactsModal(true);
     setContactsError('');
     setContactsSearch('');
+    // On the phone, read the device's OWN contacts (permission-gated, no Google login needed);
+    // on the web, use the Google People API.
+    if (Capacitor.isNativePlatform()) {
+      setContactsLoading(true);
+      try {
+        setGoogleContacts(await fetchDeviceContacts());
+      } catch (err) {
+        setContactsError(err instanceof Error ? err.message : 'לא ניתן לגשת לאנשי הקשר במכשיר.');
+      } finally {
+        setContactsLoading(false);
+      }
+      return;
+    }
     if (!googleAccessToken) {
       setContactsError('not-connected');
       return;
@@ -440,6 +458,22 @@ export default function App() {
   // can be shown directly on the calendar grid. No modal — events appear as importable chips.
   const syncGoogleCalendar = async () => {
     setCalendarError('');
+    // On the phone, read the device's OWN calendar (permission-gated); on the web, use Google.
+    if (Capacitor.isNativePlatform()) {
+      setCalendarLoading(true);
+      try {
+        const [events] = await Promise.all([
+          fetchDeviceCalendarEvents(),
+          ensureContactsLoaded().catch(() => [])
+        ]);
+        setGoogleEvents(events);
+      } catch (err) {
+        setCalendarError(err instanceof Error ? err.message : 'לא ניתן לגשת ליומן המכשיר.');
+      } finally {
+        setCalendarLoading(false);
+      }
+      return;
+    }
     if (!googleAccessToken) {
       setCalendarError('not-connected');
       return;
