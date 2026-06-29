@@ -255,7 +255,8 @@ body {
 
 .gender-radio-group {
   display: flex;
-  gap: 1.5rem;
+  flex-wrap: wrap;
+  gap: 0.75rem 1.5rem;
   margin-top: 0.25rem;
 }
 
@@ -273,6 +274,7 @@ body {
   appearance: none;
   width: 20px;
   height: 20px;
+  flex-shrink: 0; /* never let the flex row squish the circle into an oval */
   border: 2px solid var(--text-muted);
   border-radius: 50%;
   outline: none;
@@ -928,4 +930,73 @@ body {
     opacity: 1;
     transform: scale(1) translateY(0);
   }
+}
+
+/* =========================================================================
+   Mobile / narrow screens (phones). The desktop-first layout above forces the
+   logo + 4 tabs into one non-wrapping row, which overflows a phone width and
+   shifts the whole RTL layout off-screen. Here we stack the header, make the
+   tab bar full-width, and tighten spacing so everything fits a ~360px screen.
+   ========================================================================= */
+@media (max-width: 640px) {
+  html, body { overflow-x: hidden; }
+
+  .app-container {
+    padding: 0.75rem 0.75rem 2.5rem;
+  }
+
+  /* Header: logo on top, full-width tab bar below (no horizontal overflow) */
+  .app-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+    padding: 0.85rem;
+    margin-bottom: 1.25rem;
+  }
+  .logo-container { justify-content: center; }
+  .logo-icon { font-size: 1.8rem; }
+  .logo-text { font-size: 1.4rem; }
+  .logo-subtitle { font-size: 0.7rem; }
+
+  .tabs-nav {
+    width: 100%;
+    gap: 0.2rem;
+    padding: 0.25rem;
+  }
+  .tab-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    justify-content: center;
+    padding: 0.5rem 0.2rem;
+    font-size: 0.72rem;
+    gap: 0.25rem;
+    white-space: nowrap;
+  }
+  .tab-btn svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  /* Panels & forms */
+  .section-panel { padding: 1rem; }
+  .list-sticky-header { margin: 0 -1rem 0.85rem; padding: 0.6rem 1rem 0.2rem; }
+  /* 16px font keeps the browser from auto-zooming when an input is focused */
+  .form-input, .form-select, .form-textarea { font-size: 16px; padding: 0.6rem 0.75rem; }
+  .form-title { font-size: 1.1rem; margin-bottom: 1rem; }
+
+  .people-grid { grid-template-columns: 1fr; gap: 1rem; }
+
+  /* Calendar: allow cells to shrink (min-width:0) and shrink content to fit */
+  .calendar-days-grid { gap: 3px; }
+  .calendar-day-cell { min-width: 0; padding: 2px; border-radius: 5px; }
+  .calendar-day-number { font-size: 0.7rem; }
+  .calendar-birthdays-container { gap: 1px; }
+  .calendar-birthday-dot { font-size: 0.5rem; padding: 0.05rem 0.15rem; }
+  .calendar-weekday-label { font-size: 0.68rem; }
+  .calendar-title-text { font-size: 1.1rem; }
+
+  /* Modals: use nearly the full width */
+  .modal-overlay { padding: 0.6rem; }
+  .modal-content { padding: 1.25rem; max-height: 92vh; }
+  .modal-close-btn { top: 0.75rem; left: 0.75rem; }
+
+  .greeting-preview-box { padding: 1rem; font-size: 1rem; }
+  .greeting-edit-textarea { font-size: 1rem; }
 }

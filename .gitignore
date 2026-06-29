@@ -25,3 +25,6 @@ greetings-backup-*.json
 *.njsproj
 *.sln
 *.sw?
+
+# Debug screenshots
+android_screenshot*.png
