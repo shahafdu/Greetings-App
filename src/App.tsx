@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useGoogleLogin } from '@react-oauth/google';
+import { Capacitor } from '@capacitor/core';
+import { GoogleSignIn } from '@capawesome/capacitor-google-sign-in';
 import {
   Calendar as CalendarIcon,
   Users,
@@ -84,6 +86,14 @@ const guessOccasion = (title: string): Person['occasion'] => {
   if (t.includes('גיוס') || t.includes('שחרור')) return 'גיוס / שחרור';
   return 'אחר';
 };
+
+// Google OAuth: the WEB client ID is used in code on every platform (the native Android
+// client, matched by package name + SHA-1, is verified by Google behind the scenes).
+const GOOGLE_WEB_CLIENT_ID = '463592318658-5qh4cgp4cplpkie97ufb49do45pa4olp.apps.googleusercontent.com';
+const GOOGLE_SCOPES = [
+  'https://www.googleapis.com/auth/contacts.readonly',
+  'https://www.googleapis.com/auth/calendar.readonly'
+];
 
 export default function App() {
   // App navigation
@@ -323,15 +333,43 @@ export default function App() {
     scope: 'https://www.googleapis.com/auth/contacts.readonly https://www.googleapis.com/auth/calendar.readonly'
   });
 
-  const handleGoogleLogin = () => {
-    // Always allow (re-)login: the OAuth token is short-lived, so reconnecting is how
-    // the user refreshes an expired session.
+  const handleGoogleLogin = async () => {
     setIsLoggingIn(true);
+    // On Android/iOS the web OAuth popup can't complete inside the webview, so use the
+    // native Google Sign-In plugin. On the web we keep the existing popup flow.
+    if (Capacitor.isNativePlatform()) {
+      try {
+        await GoogleSignIn.initialize({ clientId: GOOGLE_WEB_CLIENT_ID, scopes: GOOGLE_SCOPES });
+        const result = await GoogleSignIn.signIn();
+        if (result.accessToken) {
+          setGoogleAccessToken(result.accessToken);
+          localStorage.setItem('birthday_greetings_google_token', result.accessToken);
+        }
+        const updatedSettings = {
+          ...settings,
+          useGoogleAuth: true,
+          googleUserName: result.displayName || result.givenName || undefined,
+          googleUserEmail: result.email || undefined
+        };
+        setLocalSettings(updatedSettings);
+        saveSettings(updatedSettings);
+        localStorage.setItem('birthday_greetings_google_auth_active', 'true');
+      } catch (err) {
+        console.error('Native Google sign-in failed:', err);
+      } finally {
+        setIsLoggingIn(false);
+      }
+      return;
+    }
+    // Web: the OAuth token is short-lived, so reconnecting refreshes an expired session.
     login();
   };
 
   // Google Sign-Out
   const handleGoogleLogout = () => {
+    if (Capacitor.isNativePlatform()) {
+      GoogleSignIn.signOut().catch(() => { /* ignore */ });
+    }
     const updatedSettings = {
       ...settings,
       useGoogleAuth: false,
