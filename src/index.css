@@ -196,17 +196,6 @@ body {
   .main-grid {
     grid-template-columns: 350px 1fr;
   }
-
-  /* Keep the add/edit form visible while scrolling the events list. align-self:start
-     stops the grid item from stretching (which would disable sticky); the form scrolls
-     internally if taller than the viewport. */
-  #add-edit-section {
-    position: sticky;
-    top: calc(var(--app-header-h, 96px) + 1rem);
-    align-self: start;
-    max-height: calc(100vh - var(--app-header-h, 96px) - 2rem);
-    overflow-y: auto;
-  }
 }
 
 /* Form Styling */
@@ -669,7 +658,8 @@ body {
 }
 
 .calendar-day-cell {
-  aspect-ratio: 1;
+  /* No aspect-ratio: combined with min-height on narrow screens it forced the cell wider
+     than its grid column, making it overlap into the next day. min-height + overflow only. */
   background: rgba(255, 255, 255, 0.02);
   border: 1px solid rgba(255, 255, 255, 0.03);
   border-radius: var(--radius-sm);
@@ -680,7 +670,9 @@ body {
   cursor: pointer;
   transition: var(--transition-smooth);
   position: relative;
-  min-height: 70px;
+  min-height: 68px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .calendar-day-cell:hover {
@@ -985,7 +977,7 @@ body {
 
   /* Calendar: allow cells to shrink (min-width:0) and shrink content to fit */
   .calendar-days-grid { gap: 3px; }
-  .calendar-day-cell { min-width: 0; padding: 2px; border-radius: 5px; }
+  .calendar-day-cell { min-width: 0; min-height: 52px; padding: 3px; border-radius: 5px; }
   .calendar-day-number { font-size: 0.7rem; }
   .calendar-birthdays-container { gap: 1px; }
   .calendar-birthday-dot { font-size: 0.5rem; padding: 0.05rem 0.15rem; }

@@ -45,7 +45,8 @@ export const fetchDeviceContacts = async (): Promise<GoogleContact[]> => {
 
 // Read device calendar events for the next ~13 months (matches the Google window).
 export const fetchDeviceCalendarEvents = async (): Promise<GoogleCalendarEvent[]> => {
-  await CapacitorCalendar.requestFullCalendarAccess();
+  // Read-only: requests only READ_CALENDAR (not WRITE_CALENDAR) — the app never modifies events.
+  await CapacitorCalendar.requestReadOnlyCalendarAccess();
 
   const from = new Date();
   from.setDate(1);

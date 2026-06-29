@@ -49,6 +49,9 @@ export interface AppSettings {
   senderGender?: 'Male' | 'Female';
   // The sender's name, used to sign the greeting (e.g. "באהבה, דנה").
   senderName?: string;
+  // Where contacts/calendar are read from on a phone: the device, or the Google account.
+  // (On the web only Google is available.)
+  dataSource?: 'device' | 'google';
   useGoogleAuth: boolean;
   googleUserEmail?: string;
   googleUserName?: string;

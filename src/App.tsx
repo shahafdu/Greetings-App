@@ -124,6 +124,7 @@ export default function App() {
 
   // Form State
   const [editingPerson, setEditingPerson] = useState<Person | null>(null);
+  const [showEventForm, setShowEventForm] = useState(false); // the add/edit form is a modal
   const [formFirstName, setFormFirstName] = useState('');
   const [formLastName, setFormLastName] = useState('');
   const [formDate, setFormDate] = useState('');
@@ -421,10 +422,15 @@ export default function App() {
 
   // Fetch contacts once and cache them (used both by the picker and for auto-matching
   // a phone number to a calendar event). Returns the freshly fetched list.
+  // Which source to read contacts/calendar from. The web only supports Google; on a phone
+  // the user picks device (default) or Google in Settings.
+  const effectiveSource = (): 'device' | 'google' =>
+    Capacitor.isNativePlatform() ? (settings.dataSource || 'device') : 'google';
+
   const ensureContactsLoaded = async (): Promise<GoogleContact[]> => {
     if (googleContacts.length > 0) return googleContacts;
     let list: GoogleContact[] = [];
-    if (Capacitor.isNativePlatform()) {
+    if (effectiveSource() === 'device') {
       list = await fetchDeviceContacts();
     } else if (googleAccessToken) {
       list = await fetchGoogleContacts(googleAccessToken);
@@ -440,28 +446,23 @@ export default function App() {
     setShowContactsModal(true);
     setContactsError('');
     setContactsSearch('');
-    // On the phone, read the device's OWN contacts (permission-gated, no Google login needed);
-    // on the web, use the Google People API.
-    if (Capacitor.isNativePlatform()) {
-      setContactsLoading(true);
-      try {
-        setGoogleContacts(await fetchDeviceContacts());
-      } catch (err) {
-        setContactsError(err instanceof Error ? err.message : 'לא ניתן לגשת לאנשי הקשר במכשיר.');
-      } finally {
-        setContactsLoading(false);
-      }
-      return;
-    }
-    if (!googleAccessToken) {
+    const source = effectiveSource();
+    if (source === 'google' && !googleAccessToken) {
       setContactsError('not-connected');
       return;
     }
     setContactsLoading(true);
     try {
-      setGoogleContacts(await fetchGoogleContacts(googleAccessToken));
+      const list = source === 'device'
+        ? await fetchDeviceContacts()
+        : await fetchGoogleContacts(googleAccessToken!);
+      setGoogleContacts(list);
     } catch (err) {
-      handleGoogleApiError(err, setContactsError);
+      if (source === 'device') {
+        setContactsError(err instanceof Error ? err.message : 'לא ניתן לגשת לאנשי הקשר במכשיר.');
+      } else {
+        handleGoogleApiError(err, setContactsError);
+      }
     } finally {
       setContactsLoading(false);
     }
@@ -471,44 +472,27 @@ export default function App() {
   // can be shown directly on the calendar grid. No modal — events appear as importable chips.
   const syncGoogleCalendar = async () => {
     setCalendarError('');
-    // On the phone, read the device's OWN calendar (permission-gated); on the web, use Google.
-    if (Capacitor.isNativePlatform()) {
-      setCalendarLoading(true);
-      try {
-        const [events] = await Promise.all([
-          fetchDeviceCalendarEvents(),
-          ensureContactsLoaded().catch(() => [])
-        ]);
-        setGoogleEvents(events);
-      } catch (err) {
-        setCalendarError(err instanceof Error ? err.message : 'לא ניתן לגשת ליומן המכשיר.');
-      } finally {
-        setCalendarLoading(false);
-      }
-      return;
-    }
-    if (!googleAccessToken) {
+    const source = effectiveSource();
+    if (source === 'google' && !googleAccessToken) {
       setCalendarError('not-connected');
       return;
     }
     setCalendarLoading(true);
     try {
       const [events] = await Promise.all([
-        fetchGoogleCalendarEvents(googleAccessToken),
+        source === 'device' ? fetchDeviceCalendarEvents() : fetchGoogleCalendarEvents(googleAccessToken!),
         ensureContactsLoaded().catch(() => [])
       ]);
       setGoogleEvents(events);
     } catch (err) {
-      handleGoogleApiError(err, setCalendarError);
+      if (source === 'device') {
+        setCalendarError(err instanceof Error ? err.message : 'לא ניתן לגשת ליומן המכשיר.');
+      } else {
+        handleGoogleApiError(err, setCalendarError);
+      }
     } finally {
       setCalendarLoading(false);
     }
-  };
-
-  // Trigger from the add-event form: jump to the calendar tab and sync.
-  const handleOpenCalendarSync = () => {
-    setActiveTab('calendar');
-    syncGoogleCalendar();
   };
 
   // Find a contact whose name appears in a calendar event title, to attach their phone.
@@ -633,11 +617,16 @@ export default function App() {
     setFormCelebrantLink('');
   };
 
-  // Start a fresh event from the list (no need to save the current one first).
+  // Open the (modal) form blank for a new event.
   const handleNewEvent = () => {
     resetForm();
-    setActiveTab('list');
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    setShowEventForm(true);
+  };
+
+  // Close the event form modal and clear it.
+  const handleCloseEventForm = () => {
+    resetForm();
+    setShowEventForm(false);
   };
 
   // Form Submit (Add / Edit)
@@ -671,6 +660,7 @@ export default function App() {
     }
 
     resetForm();
+    setShowEventForm(false);
     refreshPeopleList();
   };
 
@@ -702,6 +692,7 @@ export default function App() {
     setFormProxyName(person.proxyName || '');
     setFormProxyGender(person.proxyGender || 'Male');
     setFormCelebrantLink(person.celebrantRelationToProxy || '');
+    setShowEventForm(true);
   };
 
   // Generate Greeting Action (Stored Person)
@@ -1106,10 +1097,10 @@ export default function App() {
           <button
             onClick={() => setActiveTab('list')}
             className={`tab-btn ${activeTab === 'list' ? 'active' : ''}`}
-            id="tab-contacts"
+            id="tab-events"
           >
-            <Users size={18} />
-            <span>אנשי קשר</span>
+            <CalendarIcon size={18} />
+            <span>אירועים</span>
           </button>
           <button
             onClick={() => setActiveTab("calendar")}
@@ -1174,25 +1165,18 @@ export default function App() {
       {/* Tab Contents */}
       <main>
         {activeTab === 'list' && (
-          <div className="main-grid">
-            {/* Sidebar Form */}
-            <section className="glass-card section-panel" id="add-edit-section">
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem' }}>
-                <h2 className="form-title" id="form-heading" style={{ marginBottom: 0 }}>
-                  {editingPerson ? <Edit size={20} /> : <Plus size={20} />}
-                  <span>{editingPerson ? 'עריכת אירוע' : 'הוספת אירוע'}</span>
-                </h2>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={handleNewEvent}
-                  style={{ width: 'auto', padding: '0.4rem 0.7rem', fontSize: '0.8rem', flexShrink: 0 }}
-                  title="נקה את הטופס והתחל אירוע חדש"
-                >
-                  <Plus size={14} />
-                  <span>אירוע חדש</span>
-                </button>
-              </div>
+          <>
+            {/* Add/Edit event — modal over the events list */}
+            {showEventForm && (
+            <div className="modal-overlay" style={{ zIndex: 4000 }}>
+            <section className="glass-card modal-content" id="add-edit-section" style={{ maxWidth: '480px' }}>
+              <button type="button" onClick={handleCloseEventForm} className="icon-btn modal-close-btn" title="סגור">
+                <X size={20} />
+              </button>
+              <h2 className="form-title" id="form-heading" style={{ marginBottom: '1rem' }}>
+                {editingPerson ? <Edit size={20} /> : <Plus size={20} />}
+                <span>{editingPerson ? 'עריכת אירוע' : 'הוספת אירוע'}</span>
+              </h2>
 
               <form onSubmit={handleSubmitPerson}>
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.25rem' }}>
@@ -1204,15 +1188,6 @@ export default function App() {
                   >
                     <Import size={14} />
                     <span>ייבוא מאנשי קשר 📱</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={handleOpenCalendarSync}
-                    style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
-                  >
-                    <CalendarIcon size={14} />
-                    <span>סנכרון מיומן 📅</span>
                   </button>
                 </div>
 
@@ -1501,38 +1476,43 @@ export default function App() {
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
-                  <button type="submit" className="btn btn-primary" id="btn-submit-form">
+                  <button type="submit" className="btn btn-primary" id="btn-submit-form" style={{ flex: 1 }}>
                     {editingPerson ? 'שמור שינויים' : 'הוסף אירוע'}
                   </button>
-                  {editingPerson && (
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      onClick={resetForm}
-                    >
-                      ביטול
-                    </button>
-                  )}
+                  <button type="button" className="btn btn-secondary" onClick={handleCloseEventForm} style={{ flex: 1 }}>
+                    ביטול
+                  </button>
                 </div>
               </form>
             </section>
+            </div>
+            )}
 
-            {/* List Section */}
+            {/* Events list (the Events page) */}
             <section className="glass-card section-panel" id="contacts-list-section">
               <div className="list-sticky-header">
-                <div className="panel-header" style={{ marginBottom: '1rem' }}>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>לוח אירועים מתוכננים</h2>
+                <div className="panel-header" style={{ marginBottom: '0.85rem' }}>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>אירועים</h2>
                   <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }} className="numbers-font">
                     {filteredPeople.length} מתוך {people.length}
                   </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'stretch' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary"
+                    onClick={handleNewEvent}
+                    style={{ width: 'auto', flexShrink: 0, padding: '0 0.85rem' }}
+                  >
+                    <Plus size={16} />
+                    <span>אירוע חדש</span>
+                  </button>
                   <div className="search-container" style={{ marginBottom: 0, flex: 1 }}>
                     <input
                       type="text"
                       className="form-input search-input"
-                      placeholder="חיפוש לפי שם, קשר, אירוע או הערות..."
+                      placeholder="חיפוש..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       id="search-contacts-input"
@@ -1678,7 +1658,7 @@ export default function App() {
                 </div>
               )}
             </section>
-          </div>
+          </>
         )}
 
         {activeTab === 'calendar' && (
@@ -2154,6 +2134,41 @@ export default function App() {
                 </button>
               )}
             </div>
+
+            {/* Contacts/Calendar source (phone only — web is always Google) */}
+            {Capacitor.isNativePlatform() && (
+              <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Users size={18} />
+                  <span>מקור אנשי קשר ויומן</span>
+                </h3>
+                <p className="settings-description" style={{ fontSize: '0.85rem', marginBottom: '1rem', lineHeight: '1.5' }}>
+                  מאיפה לייבא אנשי קשר ואירועי יומן — מהמכשיר עצמו (ללא צורך בהתחברות), או מחשבון Google שלך.
+                </p>
+                <div className="gender-radio-group">
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="dataSource"
+                      className="gender-radio-input"
+                      checked={(settings.dataSource || 'device') === 'device'}
+                      onChange={() => { const s = { ...settings, dataSource: 'device' as const }; setLocalSettings(s); saveSettings(s); }}
+                    />
+                    <span>המכשיר</span>
+                  </label>
+                  <label className="gender-radio-label">
+                    <input
+                      type="radio"
+                      name="dataSource"
+                      className="gender-radio-input"
+                      checked={settings.dataSource === 'google'}
+                      onChange={() => { const s = { ...settings, dataSource: 'google' as const }; setLocalSettings(s); saveSettings(s); }}
+                    />
+                    <span>חשבון Google</span>
+                  </label>
+                </div>
+              </div>
+            )}
 
             {/* App Lock (at-rest encryption) */}
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(0, 230, 118, 0.15)' }}>
