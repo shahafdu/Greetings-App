@@ -65,6 +65,7 @@ import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels
 import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel } from './services/hebrewDate';
 import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
 import { generateShareCode, encryptEvents, decryptEvents, type PortableEvent } from './services/share';
+import { t, setLang } from './i18n';
 import { scheduleEventNotifications } from './services/notifications';
 import {
   fetchGoogleContacts,
@@ -123,6 +124,8 @@ export default function App() {
     defaultNotifyHour: '09:00',
     defaultNotifyDaysBefore: 0
   });
+  // Keep the i18n language in sync during render so t() is correct this pass.
+  setLang(settings.language || 'he');
   const [showApiKey, setShowApiKey] = useState(false);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
@@ -295,6 +298,16 @@ export default function App() {
   useEffect(() => {
     checkForUpdate().then(info => { if (info?.available) setUpdateInfo(info); });
   }, []);
+
+  // Apply UI language + document direction (RTL for Hebrew, LTR for English).
+  useEffect(() => {
+    const lang = settings.language || 'he';
+    setLang(lang);
+    const dir = lang === 'en' ? 'ltr' : 'rtl';
+    document.documentElement.setAttribute('lang', lang);
+    document.documentElement.setAttribute('dir', dir);
+    document.body.style.direction = dir;
+  }, [settings.language]);
 
   // Auto-save settings on any change (skip the initial mount) — no manual "save" needed.
   const didMountSettings = useRef(false);
@@ -1312,8 +1325,8 @@ export default function App() {
         <div className="logo-container">
           <span className="logo-icon">🎉</span>
           <div>
-            <h1 className="logo-text" id="main-app-title">מזל טוב!</h1>
-            <div className="logo-subtitle">מנהל אירועים וברכות חכמות</div>
+            <h1 className="logo-text" id="main-app-title">{t('מזל טוב!')}</h1>
+            <div className="logo-subtitle">{t('מנהל אירועים וברכות חכמות')}</div>
           </div>
         </div>
 
@@ -1324,7 +1337,7 @@ export default function App() {
             id="tab-events"
           >
             <CalendarIcon size={18} />
-            <span>אירועים</span>
+            <span>{t('אירועים')}</span>
           </button>
           <button
             onClick={() => setActiveTab("calendar")}
@@ -1332,7 +1345,7 @@ export default function App() {
             id="tab-calendar"
           >
             <CalendarIcon size={18} />
-            <span>לוח שנה</span>
+            <span>{t('לוח שנה')}</span>
           </button>
           <button
             onClick={handleOpenQuickGenerator}
@@ -1340,7 +1353,7 @@ export default function App() {
             id="tab-quick-generate"
           >
             <Sparkles size={18} />
-            <span>מחולל מהיר</span>
+            <span>{t('מחולל מהיר')}</span>
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -1348,7 +1361,7 @@ export default function App() {
             id="tab-settings"
           >
             <SettingsIcon size={18} />
-            <span>הגדרות</span>
+            <span>{t('הגדרות')}</span>
           </button>
         </nav>
       </header>
@@ -1839,9 +1852,9 @@ export default function App() {
           <section className="glass-card section-panel" id="contacts-list-section">
               <div className="list-sticky-header">
                 <div className="panel-header" style={{ marginBottom: '0.85rem' }}>
-                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>אירועים</h2>
+                  <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>{t('אירועים')}</h2>
                   <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }} className="numbers-font">
-                    {filteredPeople.length} מתוך {people.length}
+                    {filteredPeople.length} {t('מתוך')} {people.length}
                   </div>
                 </div>
 
@@ -1853,13 +1866,13 @@ export default function App() {
                     style={{ width: 'auto', flexShrink: 0, padding: '0 0.85rem' }}
                   >
                     <Plus size={16} />
-                    <span>אירוע חדש</span>
+                    <span>{t('אירוע חדש')}</span>
                   </button>
                   <div className="search-container" style={{ marginBottom: 0, flex: 1 }}>
                     <input
                       type="text"
                       className="form-input search-input"
-                      placeholder="חיפוש..."
+                      placeholder={t('חיפוש...')}
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       id="search-contacts-input"
@@ -2012,7 +2025,7 @@ export default function App() {
 
               {filteredPeople.length === 0 && (
                 <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-                  לא נמצאו אירועים מתאימים לחיפוש.
+                  {t('לא נמצאו אירועים מתאימים לחיפוש.')}
                 </div>
               )}
             </section>
@@ -2434,7 +2447,21 @@ export default function App() {
 
         {activeTab === 'settings' && (
           <section className="glass-card section-panel settings-panel" id="settings-section">
-            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>הגדרות האפליקציה</h2>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>{t('הגדרות האפליקציה')}</h2>
+
+            {/* Language */}
+            <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <label className="form-label" htmlFor="select-language">🌐 {t('שפה')}</label>
+              <select
+                id="select-language"
+                className="form-select"
+                value={settings.language || 'he'}
+                onChange={(e) => setLocalSettings({ ...settings, language: e.target.value as 'he' | 'en' })}
+              >
+                <option value="he">{t('עברית')}</option>
+                <option value="en">{t('אנגלית')}</option>
+              </select>
+            </div>
 
             {/* Share / import events */}
             <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>

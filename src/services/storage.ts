@@ -71,6 +71,8 @@ export interface AppSettings {
   defaultNotifyDaysBefore: number;
   // Show Hebrew (Jewish) calendar dates alongside Gregorian on the calendar + event form.
   showHebrewDates?: boolean;
+  // UI language. 'he' (Hebrew, RTL) by default; 'en' switches text + direction to LTR.
+  language?: 'he' | 'en';
 }
 
 // Default to the built-in proxy so greetings use AI with no key. If the proxy URL is unset
