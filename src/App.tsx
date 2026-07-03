@@ -741,15 +741,17 @@ export default function App() {
   };
 
   const handleSendShareFile = async () => {
-    const fileName = `greetings-events-${new Date().toISOString().slice(0, 10)}.mtb`;
+    // .txt so WhatsApp (and everything else) accepts it as a document.
+    const fileName = `greetings-events-${new Date().toISOString().slice(0, 10)}.txt`;
     if (Capacitor.isNativePlatform()) {
       const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
       const { Share } = await import('@capacitor/share');
       const res = await Filesystem.writeFile({ path: fileName, data: shareBlob, directory: Directory.Cache, encoding: Encoding.UTF8 });
-      await Share.share({ title: 'אירועים לשיתוף', text: 'ייבא/י את הקובץ באפליקציה. הקוד נשלח בנפרד.', url: res.uri });
+      // Share the FILE (not text) so the recipient gets an attachment to import.
+      await Share.share({ title: 'אירועים לשיתוף', files: [res.uri], dialogTitle: 'שיתוף אירועים' });
     } else {
       const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([shareBlob], { type: 'application/octet-stream' }));
+      a.href = URL.createObjectURL(new Blob([shareBlob], { type: 'text/plain' }));
       a.download = fileName;
       a.click();
       URL.revokeObjectURL(a.href);
@@ -2866,7 +2868,7 @@ export default function App() {
               <>
                 <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.75rem' }}>
                   <Import size={16} /> <span>{importFileName || 'בחר/י קובץ שיתוף'}</span>
-                  <input type="file" accept=".mtb,.json,application/json,text/plain" style={{ display: 'none' }} onChange={handleImportFilePick} />
+                  <input type="file" style={{ display: 'none' }} onChange={handleImportFilePick} />
                 </label>
 
                 <div className="form-group">
