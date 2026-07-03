@@ -183,6 +183,7 @@ export default function App() {
   const [greetingPerson, setGreetingPerson] = useState<Person | null>(null);
   const [greetingText, setGreetingText] = useState('');
   const [greetingTone, setGreetingTone] = useState<'normal' | 'funny' | 'emotional' | 'short'>('normal');
+  const [greetingLang, setGreetingLang] = useState<'he' | 'en'>('he');
   const [customGreetingDetails, setCustomGreetingDetails] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [greetingError, setGreetingError] = useState('');
@@ -912,7 +913,7 @@ export default function App() {
   const handleOpenGreeting = async (person: Person) => {
     setIsQuickMode(false);
     setGreetingPerson(person);
-    setGreetingTone('normal');
+    setGreetingTone('normal'); setGreetingLang(settings.language || 'he');
     setCustomGreetingDetails('');
     setGreetingText('');
     setGreetingError('');
@@ -920,7 +921,7 @@ export default function App() {
     setIsGenerating(true);
 
     try {
-      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings);
+      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings, greetingLang);
       setGreetingText(text);
       setGreetingError(error || '');
     } catch (err) {
@@ -979,7 +980,8 @@ export default function App() {
         mockPerson,
         greetingTone,
         customGreetingDetails,
-        settings
+        settings,
+        greetingLang
       );
       setGreetingText(text);
       setGreetingError(error || '');
@@ -994,7 +996,8 @@ export default function App() {
   const handleRegenerateGreeting = async (
     tone = greetingTone,
     customText = customGreetingDetails,
-    person = greetingPerson
+    person = greetingPerson,
+    langOverride?: 'he' | 'en'
   ) => {
     if (!person) {
       // If no person, we are in Quick Mode, construct a mock person
@@ -1020,7 +1023,7 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      const { text, error } = await generateHebrewBirthdayGreeting(person, tone, customText, settings);
+      const { text, error } = await generateHebrewBirthdayGreeting(person, tone, customText, settings, langOverride ?? greetingLang);
       setGreetingText(text);
       setGreetingError(error || '');
     } catch (err) {
@@ -2349,12 +2352,31 @@ export default function App() {
               
               <div className="greeting-options-grid">
                 <div className="form-group">
-                  <label className="form-label">סגנון / טון הברכה</label>
+                  <label className="form-label">{t('שפת הברכה')}</label>
+                  <div className="tone-selector-buttons">
+                    <button
+                      type="button"
+                      className={`tone-btn ${greetingLang === 'he' ? 'active' : ''}`}
+                      onClick={() => { setGreetingLang('he'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'he'); }}
+                    >
+                      עברית
+                    </button>
+                    <button
+                      type="button"
+                      className={`tone-btn ${greetingLang === 'en' ? 'active' : ''}`}
+                      onClick={() => { setGreetingLang('en'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'en'); }}
+                    >
+                      English
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">{t('סגנון / טון הברכה')}</label>
                   <div className="tone-selector-buttons">
                     <button
                       className={`tone-btn ${greetingTone === 'normal' ? 'active' : ''}`}
                       onClick={() => {
-                        setGreetingTone('normal');
+                        setGreetingTone('normal'); setGreetingLang(settings.language || 'he');
                         handleRegenerateGreeting('normal', customGreetingDetails);
                       }}
                     >
@@ -3144,12 +3166,31 @@ export default function App() {
               
               <div className="greeting-options-grid">
                 <div className="form-group">
-                  <label className="form-label">סגנון / טון הברכה</label>
+                  <label className="form-label">{t('שפת הברכה')}</label>
+                  <div className="tone-selector-buttons">
+                    <button
+                      type="button"
+                      className={`tone-btn ${greetingLang === 'he' ? 'active' : ''}`}
+                      onClick={() => { setGreetingLang('he'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'he'); }}
+                    >
+                      עברית
+                    </button>
+                    <button
+                      type="button"
+                      className={`tone-btn ${greetingLang === 'en' ? 'active' : ''}`}
+                      onClick={() => { setGreetingLang('en'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'en'); }}
+                    >
+                      English
+                    </button>
+                  </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">{t('סגנון / טון הברכה')}</label>
                   <div className="tone-selector-buttons">
                     <button
                       className={`tone-btn ${greetingTone === 'normal' ? 'active' : ''}`}
                       onClick={() => {
-                        setGreetingTone('normal');
+                        setGreetingTone('normal'); setGreetingLang(settings.language || 'he');
                         handleRegenerateGreeting('normal', customGreetingDetails);
                       }}
                     >

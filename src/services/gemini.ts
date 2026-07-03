@@ -306,21 +306,52 @@ const genderGrammar = (gender: Person['gender']): string => {
   return 'זכר (לכתוב בגוף שני זכר: אתה, תהיה, תצליח וכו\')';
 };
 
+// Simple English template fallback (used when no AI is available and the greeting language is English).
+const englishFallbackGreeting = (person: Person, tone: string, customDetails = '', senderName = ''): string => {
+  const years = calculateYears(person.eventDate);
+  const name = getGreetingName(person);
+  const sig = senderName.trim() ? `\n\nWith love,\n${senderName.trim()}` : '';
+  if (person.proxyName && person.proxyName.trim()) {
+    const link = person.celebrantRelationToProxy ? ` (${person.celebrantRelationToProxy})` : '';
+    let m = `Dear ${person.proxyName.trim()}! 🎉\nCongratulations on the ${person.occasion} of ${name}${link}! Wishing you lots of joy, health and happiness.`;
+    if (customDetails.trim()) m += `\n\nAlso: ${customDetails}`;
+    return m + sig;
+  }
+  const map: Record<string, string> = {
+    'יום הולדת': `Happy birthday, ${name}! 🎂🎉 Wishing you a year full of health, joy and success${years ? ` — here's to ${years}!` : ''}.`,
+    'יום נישואין': `Happy anniversary, ${name}! 💍❤️ Wishing you many more years of love, partnership and happiness.`,
+    'סיום לימודים': `Congratulations on your graduation, ${name}! 🎓 So proud of you — wishing you great success ahead.`,
+    'קידום בעבודה': `Congrats on the new role, ${name}! 🚀 Wishing you fulfillment and great success.`,
+    'הולדת תינוק/ת': `Mazal tov on your new baby, ${name}! 👶🍼 Wishing you health, joy and lots of nachas.`,
+    'מעבר דירה': `Congratulations on your new home, ${name}! 🏠🔑 May it be filled with light and happiness.`,
+    'חג שמח': `Happy holiday, ${name}! 🍎🍯 Wishing you health, joy and success.`,
+  };
+  let base = map[person.occasion] || `Congratulations, ${name}, on your ${person.occasion}! 🎉 Wishing you all the best.`;
+  if (tone === 'short') base = base.split('\n')[0];
+  if (customDetails.trim()) base += `\n\nAlso: ${customDetails}`;
+  return base + sig;
+};
+
 export const generateHebrewBirthdayGreeting = async (
   person: Person,
   tone: 'normal' | 'funny' | 'emotional' | 'short',
   customDetails: string,
-  settings: AppSettings
+  settings: AppSettings,
+  lang: 'he' | 'en' = 'he'
 ): Promise<GreetingResult> => {
   const senderGender = settings.senderGender || 'Male';
   const senderName = (settings.senderName || '').trim();
   const { provider, key, model, label } = resolveProvider(settings);
+  // Language-aware fallback (used whenever real AI is unavailable or fails).
+  const fb = (): string => lang === 'en'
+    ? englishFallbackGreeting(person, tone, customDetails, senderName)
+    : generateFallbackGreeting(person, tone, customDetails, senderGender, senderName);
 
   // Real AI generation needs either a key (gemini/groq/openrouter) or a configured proxy URL.
-  // Without one we use the local Hebrew template fallback (no error: this is expected).
+  // Without one we use the local template fallback (no error: this is expected).
   const canUseAi = provider === 'proxy' ? !!AI_PROXY_URL : !!key;
   if (!canUseAi) {
-    return { text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName) };
+    return { text: fb() };
   }
 
   try {
@@ -351,6 +382,33 @@ export const generateHebrewBirthdayGreeting = async (
 - מערכת יחסים: ${person.relation}
 - מגדר של מקבל/ת הברכה: ${genderHebrew} (חשוב מאוד להקפיד על דקדוק עברי נכון לחלוטין בהתאם למגדר!)`;
 
+    // English greeting: simpler grammar (English needs pronouns, not gendered verbs).
+    if (lang === 'en') {
+      const g = person.gender === 'Female' ? 'female (she/her)' : person.gender === 'Couple' ? 'a couple/group (they/you-plural)' : 'male (he/him)';
+      const toneEn = tone === 'funny' ? 'funny and playful' : tone === 'emotional' ? 'deeply heartfelt and loving' : tone === 'short' ? 'short and punchy, for a quick message' : 'warm and respectful';
+      const recipientEn = isProxy
+        ? `- Delivery: send the greeting VIA someone else. Address ${person.proxyName!.trim()} directly and congratulate them on the ${person.occasion} of ${nameForGreeting}${person.celebrantRelationToProxy ? ` (their ${person.celebrantRelationToProxy})` : ''}. Do NOT address ${nameForGreeting} directly.`
+        : `- Recipient: ${nameForGreeting}\n- Relationship: ${person.relation}\n- Recipient is ${g}`;
+      const promptEn = `You are a skilled, creative greeting writer.
+Write a warm, personal greeting in ENGLISH for this event:
+- Occasion: ${person.occasion}
+${recipientEn}
+- Relevant number of years (age / anniversary, if any): ${years}
+- Tone: ${toneEn}
+${person.notes ? `- Extra info about the person (hobbies/traits/context): ${person.notes}` : ''}
+${customDetails ? `- Special requests to weave in: ${customDetails}` : ''}
+${senderName ? `- Sign it at the end from: ${senderName}` : ''}
+
+Rules:
+1. Match the content to the occasion (${person.occasion}).
+2. Write directly in natural, flowing English — no preface like "Here is your greeting".
+3. Add fitting emojis to make it festive.
+4. Output only the greeting itself, clean, with no notes or quotation marks around it.`;
+      const textEn = await callProvider(provider, promptEn, key, model);
+      if (textEn) return { text: textEn };
+      return { text: fb(), error: `${label} returned an empty response. Showing a default greeting.` };
+    }
+
     const prompt = `
 אתה כותב ברכות יצירתי ומיומן בעברית.
 אנא כתוב ברכה חמה ואישית בעברית לאירוע הבא:
@@ -375,14 +433,14 @@ ${senderName ? `- חתום/חתמי את הברכה בסופה בשם השולח
 
     if (text) return { text };
     return {
-      text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName),
+      text: fb(),
       error: `${label} החזיר תשובה ריקה (ייתכן בשל מסנני בטיחות). מוצגת ברכת ברירת מחדל.`
     };
   } catch (error) {
     const detail = error instanceof Error ? error.message : String(error);
     console.error(`${label} Generation Error:`, detail);
     return {
-      text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName),
+      text: fb(),
       error: `יצירת ה-AI נכשלה (${label}) — מוצגת ברכת ברירת מחדל. פרטים: ${detail}`
     };
   }

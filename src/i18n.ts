@@ -102,6 +102,8 @@ const EN: Record<string, string> = {
   'טלפון לשליחה בוואטסאפ (אופציונלי)': 'Phone for WhatsApp (optional)',
   'הערות נוספות (תחביבים, איחולים מיוחדים)': 'Extra notes (hobbies, special wishes)',
   'אוהב שוקולד, קודם לאחרונה, מאחל לו הצלחה...': 'Loves chocolate, recently promoted, wish him success...',
+  'שפת הברכה': 'Greeting language',
+  'סגנון / טון הברכה': 'Greeting style / tone',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

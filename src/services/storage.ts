@@ -163,57 +163,6 @@ export const getRelationCategory = (relation: string): 'spouse' | 'family' | 'fr
   return 'friend';
 };
 
-const defaultPeople: Person[] = [
-  {
-    id: 'mock-1',
-    firstName: 'אורן',
-    lastName: 'כהן',
-    eventDate: `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-${String(new Date().getDate()).padStart(2, '0')}`,
-    occasion: 'יום הולדת',
-    relation: 'חבר/ה קרוב/ה',
-    gender: 'Male',
-    phone: '0501234567',
-    notes: 'אוהב כדורגל, יין אדום וטיולים בטבע',
-    notifyDaysBefore: 0,
-    notifyHour: '09:00',
-    isRecurring: true,
-    recurrence: 'yearly',
-    useFirstNameOnly: true
-  },
-  {
-    id: 'mock-2',
-    firstName: 'מיכל ורוני',
-    lastName: 'לוי',
-    eventDate: '2018-06-16',
-    occasion: 'יום נישואין',
-    relation: 'בן/בת זוג',
-    gender: 'Female',
-    phone: '0547654321',
-    notes: 'חוגגים שנות נישואין, אוהבים ספא ומסעדות יוקרה',
-    notifyDaysBefore: 1,
-    notifyHour: '10:00',
-    isRecurring: true,
-    recurrence: 'yearly',
-    useFirstNameOnly: true
-  },
-  {
-    id: 'mock-3',
-    firstName: 'איתי',
-    lastName: 'ברק',
-    eventDate: '2026-06-25',
-    occasion: 'סיום לימודים',
-    relation: 'אח/אחות',
-    gender: 'Male',
-    phone: '0529998877',
-    notes: 'מסיים תואר ראשון במדעי המחשב בהצטיינות, אוהב גיימינג',
-    notifyDaysBefore: 2,
-    notifyHour: '08:30',
-    isRecurring: false,
-    recurrence: 'once',
-    useFirstNameOnly: true
-  }
-];
-
 // ---- In-memory cache + plain/encrypted persistence ----
 // Data is held in memory while the app runs. When the App Lock is enabled it is persisted
 // as a single encrypted blob; otherwise as the original plain localStorage keys.
@@ -307,12 +256,8 @@ const loadPlainPeople = (): Person[] => {
     return mirror;
   }
 
-  // Genuine first run (no data anywhere): seed the sample events.
-  if (localStorage.getItem(PEOPLE_STORAGE_KEY) === null) {
-    localStorage.setItem(PEOPLE_STORAGE_KEY, JSON.stringify(defaultPeople));
-    return defaultPeople;
-  }
-  return primary; // legitimately empty
+  // Genuine first run (or legitimately empty): start with a clean, empty app — no sample data.
+  return [];
 };
 
 const loadPlainSettings = (): AppSettings =>
