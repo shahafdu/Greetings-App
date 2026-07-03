@@ -44,6 +44,7 @@ import {
   calculateYears,
   getDaysToEvent,
   isEventToday,
+  getDateMode,
   getOccasionEmoji,
   getGenderLabel,
   getRelationCategory,
@@ -147,7 +148,7 @@ export default function App() {
   // Hebrew date (auto-computed from the Gregorian date, editable, opt-in for recurrence)
   const [formHebrewDay, setFormHebrewDay] = useState<number | undefined>(undefined);
   const [formHebrewMonth, setFormHebrewMonth] = useState<number | undefined>(undefined);
-  const [formUseHebrewDate, setFormUseHebrewDate] = useState(false);
+  const [formDateMode, setFormDateMode] = useState<'gregorian' | 'hebrew' | 'both'>('gregorian');
   const [formHebrewEdited, setFormHebrewEdited] = useState(false); // user manually overrode it
   const [showHebrewEdit, setShowHebrewEdit] = useState(false);
 
@@ -667,7 +668,7 @@ export default function App() {
     setFormCelebrantLink('');
     setFormHebrewDay(undefined);
     setFormHebrewMonth(undefined);
-    setFormUseHebrewDate(false);
+    setFormDateMode('gregorian');
     setFormHebrewEdited(false);
     setShowHebrewEdit(false);
   };
@@ -711,7 +712,8 @@ export default function App() {
       sourceEventId: pendingImportEventId || editingPerson?.sourceEventId || undefined,
       hebrewDay: formHebrewDay,
       hebrewMonth: formHebrewMonth,
-      useHebrewDate: formUseHebrewDate
+      dateMode: formDateMode,
+      useHebrewDate: undefined
     };
 
     if (editingPerson) {
@@ -756,7 +758,7 @@ export default function App() {
     setFormCelebrantLink(person.celebrantRelationToProxy || '');
     setFormHebrewDay(person.hebrewDay);
     setFormHebrewMonth(person.hebrewMonth);
-    setFormUseHebrewDate(!!person.useHebrewDate);
+    setFormDateMode(getDateMode(person));
     // Treat as manually edited only if the stored Hebrew date differs from the auto value.
     const auto = gregToHebrew(person.eventDate);
     setFormHebrewEdited(!!person.hebrewDay && (!auto || person.hebrewDay !== auto.day || person.hebrewMonth !== auto.month));
@@ -1018,19 +1020,28 @@ export default function App() {
   // Does a person's event fall on a given calendar day? Hebrew-date events land on the
   // Gregorian date of their Hebrew anniversary for that day's year.
   const personOccursOn = (p: Person, cellDate: Date): boolean => {
-    if (p.useHebrewDate && p.hebrewDay && p.hebrewMonth) {
-      const anniv = hebrewAnniversaryInGregYear(p.hebrewDay, p.hebrewMonth, cellDate.getFullYear());
+    const mode = getDateMode(p);
+    const hasHeb = !!(p.hebrewDay && p.hebrewMonth);
+    const hebMatch = hasHeb && (() => {
+      const anniv = hebrewAnniversaryInGregYear(p.hebrewDay!, p.hebrewMonth!, cellDate.getFullYear());
       return !!anniv && anniv.getMonth() === cellDate.getMonth() && anniv.getDate() === cellDate.getDate();
-    }
-    const pDate = new Date(p.eventDate);
-    pDate.setHours(0, 0, 0, 0);
-    if (cellDate < pDate) return false;
-    if (!p.isRecurring || p.recurrence === 'once') {
-      return pDate.getFullYear() === cellDate.getFullYear() && pDate.getMonth() === cellDate.getMonth() && pDate.getDate() === cellDate.getDate();
-    }
-    if (p.recurrence === 'weekly') return pDate.getDay() === cellDate.getDay();
-    if (p.recurrence === 'monthly') return pDate.getDate() === cellDate.getDate();
-    return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
+    })();
+    if (mode === 'hebrew') return hebMatch;
+
+    const gregMatch = (() => {
+      const pDate = new Date(p.eventDate);
+      pDate.setHours(0, 0, 0, 0);
+      if (cellDate < pDate) return false;
+      if (!p.isRecurring || p.recurrence === 'once') {
+        return pDate.getFullYear() === cellDate.getFullYear() && pDate.getMonth() === cellDate.getMonth() && pDate.getDate() === cellDate.getDate();
+      }
+      if (p.recurrence === 'weekly') return pDate.getDay() === cellDate.getDay();
+      if (p.recurrence === 'monthly') return pDate.getDate() === cellDate.getDate();
+      return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
+    })();
+
+    if (mode === 'both') return gregMatch || hebMatch;
+    return gregMatch;
   };
 
   const getEventsForDay = (year: number, month: number, day: number) => {
@@ -1425,10 +1436,19 @@ export default function App() {
                       </div>
                     )}
 
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', fontSize: '0.85rem', cursor: 'pointer' }}>
-                      <input type="checkbox" checked={formUseHebrewDate} onChange={(e) => setFormUseHebrewDate(e.target.checked)} />
-                      <span>חשב תזכורות ומחזוריות לפי התאריך העברי</span>
-                    </label>
+                    <div style={{ marginTop: '0.75rem' }}>
+                      <label className="form-label" htmlFor="select-date-mode" style={{ fontSize: '0.85rem' }}>מתי לברך / להזכיר</label>
+                      <select
+                        id="select-date-mode"
+                        className="form-select"
+                        value={formDateMode}
+                        onChange={(e) => setFormDateMode(e.target.value as 'gregorian' | 'hebrew' | 'both')}
+                      >
+                        <option value="gregorian">בתאריך הלועזי בלבד</option>
+                        <option value="hebrew">בתאריך העברי בלבד</option>
+                        <option value="both">בשני התאריכים</option>
+                      </select>
+                    </div>
                   </div>
                 )}
 

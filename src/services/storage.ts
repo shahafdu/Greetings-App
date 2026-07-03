@@ -38,7 +38,9 @@ export interface Person {
   // hebcal day + month numbers so the anniversary can recur on the Hebrew calendar.
   hebrewDay?: number;
   hebrewMonth?: number;
-  // When true, this event's recurrence + notifications follow the Hebrew date, not the Gregorian.
+  // Which date(s) to greet on: Gregorian only (default), the Hebrew anniversary only, or both.
+  dateMode?: 'gregorian' | 'hebrew' | 'both';
+  // Deprecated: superseded by dateMode ('hebrew'). Kept so old saved events still work.
   useHebrewDate?: boolean;
 }
 
@@ -457,18 +459,21 @@ export const calculateYears = (eventDateStr: string): number => {
   return Math.max(0, years);
 };
 
-// Get number of days remaining until next event occurrence
-export const getDaysToEvent = (person: Person): number => {
+// Whether an event greets on the Gregorian date, the Hebrew date, or both.
+// Back-compat: the old useHebrewDate boolean maps to 'hebrew'.
+export const getDateMode = (person: Person): 'gregorian' | 'hebrew' | 'both' =>
+  person.dateMode || (person.useHebrewDate ? 'hebrew' : 'gregorian');
+
+// Days until the next Gregorian anniversary of the Hebrew date.
+const hebrewDaysToEvent = (person: Person, today: Date): number => {
+  const next = nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today);
+  return Math.round((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+};
+
+// Gregorian days-to-next-occurrence (the original logic).
+const gregorianDaysToEvent = (person: Person, today: Date): number => {
   const eventDate = new Date(person.eventDate);
   eventDate.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Hebrew-date events recur on the Jewish calendar: next Gregorian date of the Hebrew anniversary.
-  if (person.useHebrewDate && person.hebrewDay && person.hebrewMonth) {
-    const next = nextHebrewOccurrence(person.hebrewDay, person.hebrewMonth, today);
-    return Math.round((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-  }
 
   // If the event start date is in the future, return days until that date
   if (today < eventDate) {
@@ -523,37 +528,50 @@ export const getDaysToEvent = (person: Person): number => {
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };
 
+// Days remaining until the next occurrence, respecting the event's dateMode
+// (gregorian only / hebrew only / both — the sooner of the two).
+export const getDaysToEvent = (person: Person): number => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const mode = getDateMode(person);
+  const hasHeb = !!(person.hebrewDay && person.hebrewMonth);
+  if (mode === 'hebrew' && hasHeb) return hebrewDaysToEvent(person, today);
+  const gd = gregorianDaysToEvent(person, today);
+  if (mode === 'both' && hasHeb) {
+    const hd = hebrewDaysToEvent(person, today);
+    const cands = [gd, hd].filter(x => x >= 0);
+    return cands.length ? Math.min(...cands) : -1;
+  }
+  return gd;
+};
+
 // Check if an event is happening today
 export const isEventToday = (person: Person): boolean => {
   const eventDate = new Date(person.eventDate);
   eventDate.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+  const mode = getDateMode(person);
+  const hasHeb = !!(person.hebrewDay && person.hebrewMonth);
 
-  if (person.useHebrewDate && person.hebrewDay && person.hebrewMonth) {
-    return nextHebrewOccurrence(person.hebrewDay, person.hebrewMonth, today).getTime() === today.getTime();
-  }
+  const hebToday = hasHeb &&
+    nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today).getTime() === today.getTime();
+  if (mode === 'hebrew') return hebToday;
 
-  if (today < eventDate) {
-    return false;
-  }
+  const gregToday = (() => {
+    if (today < eventDate) return false;
+    if (!person.isRecurring || person.recurrence === 'once') {
+      return eventDate.getDate() === today.getDate() &&
+             eventDate.getMonth() === today.getMonth() &&
+             eventDate.getFullYear() === today.getFullYear();
+    }
+    if (person.recurrence === 'weekly') return eventDate.getDay() === today.getDay();
+    if (person.recurrence === 'monthly') return eventDate.getDate() === today.getDate();
+    return eventDate.getDate() === today.getDate() && eventDate.getMonth() === today.getMonth();
+  })();
 
-  if (!person.isRecurring || person.recurrence === 'once') {
-    return eventDate.getDate() === today.getDate() &&
-           eventDate.getMonth() === today.getMonth() &&
-           eventDate.getFullYear() === today.getFullYear();
-  }
-
-  if (person.recurrence === 'weekly') {
-    return eventDate.getDay() === today.getDay();
-  }
-
-  if (person.recurrence === 'monthly') {
-    return eventDate.getDate() === today.getDate();
-  }
-
-  // Yearly
-  return eventDate.getDate() === today.getDate() && eventDate.getMonth() === today.getMonth();
+  if (mode === 'both') return gregToday || hebToday;
+  return gregToday;
 };
 
 // Hebrew label for a gender value (Couple = a couple/group addressed in plural).

@@ -6,21 +6,13 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Person } from './storage';
-import { getOccasionEmoji } from './storage';
+import { getOccasionEmoji, getDateMode } from './storage';
 import { nextHebrewOccurrence } from './hebrewDate';
 
-// The next calendar date this event occurs on (or null for a past one-time event).
-const nextOccurrenceDate = (person: Person): Date | null => {
+// Next Gregorian occurrence (ignores the Hebrew date).
+const gregorianNext = (person: Person, today: Date): Date | null => {
   const ev = new Date(person.eventDate);
   ev.setHours(0, 0, 0, 0);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  // Hebrew-date events: next Gregorian date of the Hebrew anniversary.
-  if (person.useHebrewDate && person.hebrewDay && person.hebrewMonth) {
-    return nextHebrewOccurrence(person.hebrewDay, person.hebrewMonth, today);
-  }
-
   if (!person.isRecurring || person.recurrence === 'once') {
     return ev >= today ? ev : null;
   }
@@ -40,10 +32,25 @@ const nextOccurrenceDate = (person: Person): Date | null => {
     }
     return new Date(year, month, ev.getDate());
   }
-  // yearly
   const next = new Date(today.getFullYear(), ev.getMonth(), ev.getDate());
   if (next < today) next.setFullYear(today.getFullYear() + 1);
   return next;
+};
+
+// The next date this event occurs on, respecting its dateMode (gregorian/hebrew/both = sooner).
+const nextOccurrenceDate = (person: Person): Date | null => {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const mode = getDateMode(person);
+  const hasHeb = !!(person.hebrewDay && person.hebrewMonth);
+  const heb = hasHeb ? nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today) : null;
+  if (mode === 'hebrew') return heb;
+  const greg = gregorianNext(person, today);
+  if (mode === 'both') {
+    const cands = [greg, heb].filter((d): d is Date => !!d);
+    return cands.length ? cands.reduce((a, b) => (a.getTime() <= b.getTime() ? a : b)) : null;
+  }
+  return greg;
 };
 
 // Ensure notification permission, returning whether it's granted.
