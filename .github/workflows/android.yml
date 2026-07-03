@@ -46,28 +46,15 @@ jobs:
           npm run build
           npx cap sync android
 
-      - name: Decode release keystore (if configured as a secret)
-        env:
-          KS: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
-        run: |
-          if [ -n "$KS" ]; then
-            echo "$KS" | base64 -d > android/greetings-release.keystore
-            echo "HAVE_KEYSTORE=1" >> "$GITHUB_ENV"
-          fi
-
-      - name: Build signed release APK
-        env:
-          RSP: ${{ secrets.RELEASE_STORE_PASSWORD }}
-          RKA: ${{ secrets.RELEASE_KEY_ALIAS }}
-          RKP: ${{ secrets.RELEASE_KEY_PASSWORD }}
+      # NOTE: temporarily signing with the committed debug key (build.gradle fallback) so new
+      # builds update the currently-installed app IN PLACE (no uninstall, no data loss). The
+      # release-keystore secrets are still set; re-enable them only after users have exported a
+      # backup via the in-app share/export feature.
+      - name: Build signed release APK (debug-key fallback for in-place updates)
         run: |
           cd android
           chmod +x gradlew
-          ARGS="-PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}"
-          if [ "$HAVE_KEYSTORE" = "1" ]; then
-            ARGS="$ARGS -PRELEASE_STORE_FILE=../greetings-release.keystore -PRELEASE_STORE_PASSWORD=$RSP -PRELEASE_KEY_ALIAS=$RKA -PRELEASE_KEY_PASSWORD=$RKP"
-          fi
-          ./gradlew assembleRelease --console=plain $ARGS
+          ./gradlew assembleRelease --console=plain -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
 
       - name: Stage APK
         run: cp android/app/build/outputs/apk/release/app-release.apk greetings.apk
