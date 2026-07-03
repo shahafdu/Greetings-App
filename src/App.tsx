@@ -209,6 +209,10 @@ export default function App() {
   const [importedEventIds, setImportedEventIds] = useState<string[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState('');
+  // The day tapped on the calendar grid — shows a detail panel with that day's full event list.
+  const [selectedDay, setSelectedDay] = useState<{ year: number; month: number; day: number } | null>(null);
+  // When importing a synced event via the form, remember which event so it's marked imported on save.
+  const [pendingImportEventId, setPendingImportEventId] = useState<string | null>(null);
 
   // Gemini key-test state (Settings)
   const [keyTestStatus, setKeyTestStatus] = useState<'idle' | 'testing' | 'valid' | 'invalid'>('idle');
@@ -405,98 +409,102 @@ export default function App() {
     localStorage.removeItem('birthday_greetings_google_token');
   };
 
-  // Shared handler: surface a Google API error, dropping an expired token so the UI
-  // can prompt a reconnect.
-  const handleGoogleApiError = (err: unknown, setError: (msg: string) => void) => {
-    if (err instanceof GoogleApiError) {
-      if (err.status === 401) {
-        setGoogleAccessToken(null);
-        localStorage.removeItem('birthday_greetings_google_token');
-      }
-      setError(err.message);
-    } else {
-      console.error(err);
-      setError('שגיאה בלתי צפויה בעת טעינת הנתונים מגוגל.');
+  // If a Google fetch failed because the token expired, drop it so the UI can prompt reconnect.
+  const handleGoogleFetchError = (err: unknown) => {
+    if (err instanceof GoogleApiError && err.status === 401) {
+      setGoogleAccessToken(null);
+      localStorage.removeItem('birthday_greetings_google_token');
     }
   };
 
   // Fetch contacts once and cache them (used both by the picker and for auto-matching
   // a phone number to a calendar event). Returns the freshly fetched list.
-  // Which source to read contacts/calendar from. The web only supports Google; on a phone
-  // the user picks device (default) or Google in Settings.
-  const effectiveSource = (): 'device' | 'google' =>
-    Capacitor.isNativePlatform() ? (settings.dataSource || 'device') : 'google';
+  // Fetch contacts from EVERY available source — the device (on a phone) and Google (when
+  // connected) — merged and de-duped. Returns an error string only if nothing loaded at all.
+  const fetchAllContacts = async (): Promise<{ contacts: GoogleContact[]; error?: string }> => {
+    const all: GoogleContact[] = [];
+    const errors: string[] = [];
+    if (Capacitor.isNativePlatform()) {
+      try { all.push(...await fetchDeviceContacts()); } catch (e) { errors.push(e instanceof Error ? e.message : 'מכשיר'); }
+    }
+    if (googleAccessToken) {
+      try { all.push(...await fetchGoogleContacts(googleAccessToken)); } catch (e) { handleGoogleFetchError(e); errors.push('Google'); }
+    }
+    const seen = new Set<string>();
+    const merged = all
+      .filter(c => {
+        const key = `${c.firstName}|${c.lastName || ''}|${(c.phone || '').replace(/\D/g, '')}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .sort((a, b) => a.firstName.localeCompare(b.firstName, 'he'));
+    return { contacts: merged, error: merged.length === 0 && errors.length ? errors.join(' | ') : undefined };
+  };
+
+  // Same for calendar events (device + Google), merged and de-duped by title+date.
+  const fetchAllCalendarEvents = async (): Promise<{ events: GoogleCalendarEvent[]; error?: string }> => {
+    const all: GoogleCalendarEvent[] = [];
+    const errors: string[] = [];
+    if (Capacitor.isNativePlatform()) {
+      try { all.push(...await fetchDeviceCalendarEvents()); } catch (e) { errors.push(e instanceof Error ? e.message : 'מכשיר'); }
+    }
+    if (googleAccessToken) {
+      try { all.push(...await fetchGoogleCalendarEvents(googleAccessToken)); } catch (e) { handleGoogleFetchError(e); errors.push('Google'); }
+    }
+    const seen = new Set<string>();
+    const merged = all.filter(e => {
+      const k = `${e.title}|${e.date}`;
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+    return { events: merged, error: merged.length === 0 && errors.length ? errors.join(' | ') : undefined };
+  };
 
   const ensureContactsLoaded = async (): Promise<GoogleContact[]> => {
     if (googleContacts.length > 0) return googleContacts;
-    let list: GoogleContact[] = [];
-    if (effectiveSource() === 'device') {
-      list = await fetchDeviceContacts();
-    } else if (googleAccessToken) {
-      list = await fetchGoogleContacts(googleAccessToken);
-    }
-    setGoogleContacts(list);
-    return list;
+    const { contacts } = await fetchAllContacts();
+    setGoogleContacts(contacts);
+    return contacts;
   };
 
-  // Persist the chosen contacts/calendar source.
-  const setDataSource = (src: 'device' | 'google') => {
-    const s = { ...settings, dataSource: src };
-    setLocalSettings(s);
-    saveSettings(s);
-  };
-
-  // Open the contacts picker. `target` = form/quick; `sourceOverride` lets a source toggle
-  // re-fetch immediately (React state updates are async).
-  const openContactsModal = async (target: 'form' | 'quick' = 'form', sourceOverride?: 'device' | 'google') => {
+  const openContactsModal = async (target: 'form' | 'quick' = 'form') => {
     setContactsTarget(target);
     setShowContactsModal(true);
     setContactsError('');
     setContactsSearch('');
-    const source = sourceOverride || effectiveSource();
-    if (source === 'google' && !googleAccessToken) {
+    // On the web with no Google connection there's nothing to read; on a phone the device is
+    // always available (and Google is added to the merge once connected).
+    if (!Capacitor.isNativePlatform() && !googleAccessToken) {
       setContactsError('not-connected');
       return;
     }
     setContactsLoading(true);
     try {
-      const list = source === 'device'
-        ? await fetchDeviceContacts()
-        : await fetchGoogleContacts(googleAccessToken!);
-      setGoogleContacts(list);
-    } catch (err) {
-      if (source === 'device') {
-        setContactsError(err instanceof Error ? err.message : 'לא ניתן לגשת לאנשי הקשר במכשיר.');
-      } else {
-        handleGoogleApiError(err, setContactsError);
-      }
+      const { contacts, error } = await fetchAllContacts();
+      setGoogleContacts(contacts);
+      if (error) setContactsError(error);
     } finally {
       setContactsLoading(false);
     }
   };
 
-  // Fetch Google Calendar events (and contacts, for phone auto-linking) into state so they
-  // can be shown directly on the calendar grid. No modal — events appear as importable chips.
-  const syncGoogleCalendar = async (sourceOverride?: 'device' | 'google') => {
+  // Load calendar events from all sources onto the calendar grid.
+  const syncGoogleCalendar = async () => {
     setCalendarError('');
-    const source = sourceOverride || effectiveSource();
-    if (source === 'google' && !googleAccessToken) {
+    if (!Capacitor.isNativePlatform() && !googleAccessToken) {
       setCalendarError('not-connected');
       return;
     }
     setCalendarLoading(true);
     try {
-      const [events] = await Promise.all([
-        source === 'device' ? fetchDeviceCalendarEvents() : fetchGoogleCalendarEvents(googleAccessToken!),
+      const [{ events, error }] = await Promise.all([
+        fetchAllCalendarEvents(),
         ensureContactsLoaded().catch(() => [])
       ]);
       setGoogleEvents(events);
-    } catch (err) {
-      if (source === 'device') {
-        setCalendarError(err instanceof Error ? err.message : 'לא ניתן לגשת ליומן המכשיר.');
-      } else {
-        handleGoogleApiError(err, setCalendarError);
-      }
+      if (error) setCalendarError(error);
     } finally {
       setCalendarLoading(false);
     }
@@ -633,6 +641,7 @@ export default function App() {
   // Close the event form modal and clear it.
   const handleCloseEventForm = () => {
     resetForm();
+    setPendingImportEventId(null);
     setShowEventForm(false);
   };
 
@@ -666,6 +675,10 @@ export default function App() {
       addPerson(personData);
     }
 
+    if (pendingImportEventId) {
+      setImportedEventIds(prev => [...prev, pendingImportEventId]);
+      setPendingImportEventId(null);
+    }
     resetForm();
     setShowEventForm(false);
     refreshPeopleList();
@@ -879,25 +892,24 @@ export default function App() {
 
   // Import a real Google Calendar event, auto-linking a matching contact's phone/gender
   // so the event is ready to send on WhatsApp (calendar has the date, contacts have the number).
-  const handleImportGoogleEvent = (event: GoogleCalendarEvent) => {
+  // Import a synced calendar event by opening the add-event form PRE-FILLED, so the user can
+  // review/adjust (relation, gender, recurrence — which device/Google events don't carry) before
+  // saving. On save it's marked imported (handleSubmitPerson uses pendingImportEventId).
+  const handleReviewImportEvent = (event: GoogleCalendarEvent) => {
     const occasion = guessOccasion(event.title);
     const recurring = ['יום הולדת', 'יום נישואין', 'חג שמח'].includes(occasion);
     const match = matchContactForEvent(event.title);
-    addPerson({
-      firstName: event.title,
-      eventDate: event.date,
-      occasion,
-      relation: 'חבר/ה',
-      gender: match?.gender || 'Male',
-      phone: match?.phone,
-      notifyDaysBefore: 0,
-      notifyHour: '09:00',
-      isRecurring: recurring,
-      recurrence: recurring ? 'yearly' : 'once',
-      useFirstNameOnly: false
-    });
-    setImportedEventIds(prev => [...prev, event.id]);
-    refreshPeopleList();
+    resetForm();
+    setFormFirstName(event.title);
+    setFormDate(event.date);
+    setFormOccasion(occasion);
+    setFormRelation('חבר/ה');
+    if (match?.gender) setFormGender(match.gender);
+    if (match?.phone) setFormPhone(match.phone);
+    setFormIsRecurring(recurring);
+    setFormRecurrence(recurring ? 'yearly' : 'once');
+    setPendingImportEventId(event.id);
+    setShowEventForm(true);
   };
 
   // Filtering people list
@@ -944,6 +956,29 @@ export default function App() {
     } else {
       setCalendarMonth(prev => prev + 1);
     }
+  };
+
+  // Saved events + pending (synced, not-yet-added) events that fall on a given day.
+  const getEventsForDay = (year: number, month: number, day: number) => {
+    const cellDate = new Date(year, month, day);
+    cellDate.setHours(0, 0, 0, 0);
+    const saved = people.filter(p => {
+      const pDate = new Date(p.eventDate);
+      pDate.setHours(0, 0, 0, 0);
+      if (cellDate < pDate) return false;
+      if (!p.isRecurring || p.recurrence === 'once') {
+        return pDate.getFullYear() === cellDate.getFullYear() && pDate.getMonth() === cellDate.getMonth() && pDate.getDate() === cellDate.getDate();
+      }
+      if (p.recurrence === 'weekly') return pDate.getDay() === cellDate.getDay();
+      if (p.recurrence === 'monthly') return pDate.getDate() === cellDate.getDate();
+      return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
+    });
+    const pending = googleEvents.filter(e => {
+      if (importedEventIds.includes(e.id)) return false;
+      const [y, m, d] = e.date.split('-').map(Number);
+      return y === year && (m - 1) === month && d === day;
+    });
+    return { saved, pending };
   };
 
   // Render Calendar Cells
@@ -1013,17 +1048,16 @@ export default function App() {
         cell.month === todayDate.getMonth() &&
         cell.year === todayDate.getFullYear();
 
+      const isSelected = !!selectedDay &&
+        selectedDay.year === cell.year && selectedDay.month === cell.month && selectedDay.day === cell.day;
+
       return (
         <div
           key={index}
-          className={`calendar-day-cell ${cell.isCurrentMonth ? '' : 'other-month'} ${isCellToday ? 'today' : ''}`}
+          className={`calendar-day-cell ${cell.isCurrentMonth ? '' : 'other-month'} ${isCellToday ? 'today' : ''} ${isSelected ? 'selected' : ''}`}
           onClick={() => {
-            if (cell.isCurrentMonth) {
-              const formattedMonth = String(cell.month + 1).padStart(2, '0');
-              const formattedDay = String(cell.day).padStart(2, '0');
-              setFormDate(`${cell.year}-${formattedMonth}-${formattedDay}`);
-              setActiveTab('list');
-            }
+            setSelectedDay({ year: cell.year, month: cell.month, day: cell.day });
+            if (!cell.isCurrentMonth) { setCalendarMonth(cell.month); setCalendarYear(cell.year); }
           }}
         >
           <span className="calendar-day-number">{cell.day}</span>
@@ -1037,11 +1071,10 @@ export default function App() {
               <div
                 key={e.id}
                 className="calendar-birthday-dot"
-                style={{ border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)', cursor: 'pointer' }}
-                title={`לחץ/י לייבוא מיומן Google: ${e.title}`}
-                onClick={(ev) => { ev.stopPropagation(); handleImportGoogleEvent(e); }}
+                style={{ border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)' }}
+                title={e.title}
               >
-                ➕ {e.title}
+                {e.title}
               </div>
             ))}
           </div>
@@ -1171,10 +1204,8 @@ export default function App() {
 
       {/* Tab Contents */}
       <main>
-        {activeTab === 'list' && (
-          <>
-            {/* Add/Edit event — modal over the events list */}
-            {showEventForm && (
+        {/* Add/Edit event — modal (opens from the events list OR the calendar) */}
+        {showEventForm && (
             <div className="modal-overlay" style={{ zIndex: 4000 }}>
             <section className="glass-card modal-content" id="add-edit-section" style={{ maxWidth: '480px' }}>
               <button type="button" onClick={handleCloseEventForm} className="icon-btn modal-close-btn" title="סגור">
@@ -1493,10 +1524,10 @@ export default function App() {
               </form>
             </section>
             </div>
-            )}
+        )}
 
-            {/* Events list (the Events page) */}
-            <section className="glass-card section-panel" id="contacts-list-section">
+        {activeTab === 'list' && (
+          <section className="glass-card section-panel" id="contacts-list-section">
               <div className="list-sticky-header">
                 <div className="panel-header" style={{ marginBottom: '0.85rem' }}>
                   <h2 style={{ fontSize: '1.4rem', fontWeight: 800 }}>אירועים</h2>
@@ -1665,7 +1696,6 @@ export default function App() {
                 </div>
               )}
             </section>
-          </>
         )}
 
         {activeTab === 'calendar' && (
@@ -1684,24 +1714,6 @@ export default function App() {
 
             {/* Calendar sync bar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
-              {Capacitor.isNativePlatform() && (
-                <div style={{ display: 'flex', gap: '0.4rem' }}>
-                  <button
-                    type="button"
-                    className={`tone-btn ${effectiveSource() === 'device' ? 'active' : ''}`}
-                    onClick={() => { setDataSource('device'); syncGoogleCalendar('device'); }}
-                  >
-                    מהמכשיר
-                  </button>
-                  <button
-                    type="button"
-                    className={`tone-btn ${effectiveSource() === 'google' ? 'active' : ''}`}
-                    onClick={() => { setDataSource('google'); syncGoogleCalendar('google'); }}
-                  >
-                    מ-Google
-                  </button>
-                </div>
-              )}
               <button
                 type="button"
                 className="btn btn-secondary"
@@ -1717,7 +1729,7 @@ export default function App() {
                 ) : (
                   <>
                     <CalendarIcon size={14} />
-                    <span>סנכרן אירועים{effectiveSource() === 'google' ? ' מ-Google' : ' מהמכשיר'}</span>
+                    <span>סנכרן אירועים (מכשיר + Google)</span>
                   </>
                 )}
               </button>
@@ -1751,7 +1763,56 @@ export default function App() {
               ))}
               {renderCalendarCells()}
             </div>
-            
+
+            {/* Selected-day detail: full event names + actions (tap a day to open) */}
+            {selectedDay && (() => {
+              const { saved, pending } = getEventsForDay(selectedDay.year, selectedDay.month, selectedDay.day);
+              const dateStr = new Date(selectedDay.year, selectedDay.month, selectedDay.day)
+                .toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+              const isoDate = `${selectedDay.year}-${String(selectedDay.month + 1).padStart(2, '0')}-${String(selectedDay.day).padStart(2, '0')}`;
+              return (
+                <div className="glass-card" style={{ padding: '1rem', margin: '1rem 0', border: '1px solid var(--panel-border-hover)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                    <h3 style={{ fontSize: '1rem', fontWeight: 800 }}>{dateStr}</h3>
+                    <button type="button" className="icon-btn" onClick={() => setSelectedDay(null)} title="סגור" style={{ flexShrink: 0 }}>
+                      <X size={16} />
+                    </button>
+                  </div>
+
+                  {saved.length === 0 && pending.length === 0 && (
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>אין אירועים ביום זה.</p>
+                  )}
+
+                  {saved.map(p => (
+                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{p.occasion} · {p.relation}</div>
+                      </div>
+                      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                        <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>ברכה</button>
+                        <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleStartEdit(p)}>עריכה</button>
+                      </div>
+                    </div>
+                  ))}
+
+                  {pending.map(e => (
+                    <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--secondary)' }}>אירוע מהיומן — לא נוסף עדיין</div>
+                      </div>
+                      <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem', flexShrink: 0 }} onClick={() => handleReviewImportEvent(e)}>➕ הוסף</button>
+                    </div>
+                  ))}
+
+                  <button type="button" className="btn btn-secondary" style={{ marginTop: '0.85rem' }} onClick={() => { resetForm(); setFormDate(isoDate); setShowEventForm(true); }}>
+                    <Plus size={14} /> <span>הוסף אירוע ביום זה</span>
+                  </button>
+                </div>
+              );
+            })()}
+
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1.5rem', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--accent)' }}></span>
@@ -1767,7 +1828,7 @@ export default function App() {
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '3px', border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)' }}></span>
-                <span>אירוע מ-Google (לחץ לייבוא)</span>
+                <span>אירוע מהיומן (הקש על היום)</span>
               </span>
             </div>
           </section>
@@ -2159,41 +2220,6 @@ export default function App() {
                 </button>
               )}
             </div>
-
-            {/* Contacts/Calendar source (phone only — web is always Google) */}
-            {Capacitor.isNativePlatform() && (
-              <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-                <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <Users size={18} />
-                  <span>מקור אנשי קשר ויומן</span>
-                </h3>
-                <p className="settings-description" style={{ fontSize: '0.85rem', marginBottom: '1rem', lineHeight: '1.5' }}>
-                  מאיפה לייבא אנשי קשר ואירועי יומן — מהמכשיר עצמו (ללא צורך בהתחברות), או מחשבון Google שלך.
-                </p>
-                <div className="gender-radio-group">
-                  <label className="gender-radio-label">
-                    <input
-                      type="radio"
-                      name="dataSource"
-                      className="gender-radio-input"
-                      checked={(settings.dataSource || 'device') === 'device'}
-                      onChange={() => { const s = { ...settings, dataSource: 'device' as const }; setLocalSettings(s); saveSettings(s); }}
-                    />
-                    <span>המכשיר</span>
-                  </label>
-                  <label className="gender-radio-label">
-                    <input
-                      type="radio"
-                      name="dataSource"
-                      className="gender-radio-input"
-                      checked={settings.dataSource === 'google'}
-                      onChange={() => { const s = { ...settings, dataSource: 'google' as const }; setLocalSettings(s); saveSettings(s); }}
-                    />
-                    <span>חשבון Google</span>
-                  </label>
-                </div>
-              </div>
-            )}
 
             {/* App Lock (at-rest encryption) */}
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(0, 230, 118, 0.15)' }}>
@@ -2810,27 +2836,6 @@ export default function App() {
               <Users size={20} />
               <span>ייבוא מאנשי קשר 📱</span>
             </h3>
-
-            {Capacitor.isNativePlatform() && (
-              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-                <button
-                  type="button"
-                  className={`tone-btn ${effectiveSource() === 'device' ? 'active' : ''}`}
-                  style={{ flex: 1 }}
-                  onClick={() => { setDataSource('device'); openContactsModal(contactsTarget, 'device'); }}
-                >
-                  מהמכשיר
-                </button>
-                <button
-                  type="button"
-                  className={`tone-btn ${effectiveSource() === 'google' ? 'active' : ''}`}
-                  style={{ flex: 1 }}
-                  onClick={() => { setDataSource('google'); openContactsModal(contactsTarget, 'google'); }}
-                >
-                  מ-Google
-                </button>
-              </div>
-            )}
 
             {contactsError === 'not-connected' ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>

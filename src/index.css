@@ -693,6 +693,11 @@ body {
   border-color: var(--primary);
 }
 
+.calendar-day-cell.selected {
+  border-color: var(--secondary);
+  box-shadow: 0 0 0 1px var(--secondary);
+}
+
 .calendar-day-number {
   font-size: 0.95rem;
   font-weight: 600;
