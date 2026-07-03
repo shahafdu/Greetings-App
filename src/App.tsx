@@ -1448,27 +1448,27 @@ export default function App() {
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{p.occasion} · {p.relation}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                      <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>ברכה</button>
-                      <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleStartEdit(p)}>עריכה</button>
+                      <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>{t('ברכה')}</button>
+                      <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleStartEdit(p)}>{t('עריכה')}</button>
                     </div>
                   </div>
                 ))}
 
                 {pending.length > 0 && (
-                  <p style={{ fontSize: '0.8rem', color: 'var(--secondary)', margin: '0.85rem 0 0.35rem' }}>אירועים מהיומן — בחר/י מה להוסיף:</p>
+                  <p style={{ fontSize: '0.8rem', color: 'var(--secondary)', margin: '0.85rem 0 0.35rem' }}>{t('אירועים מהיומן — בחר/י מה להוסיף:')}</p>
                 )}
                 {pending.map(e => (
                   <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--secondary)' }}>לא נוסף עדיין</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--secondary)' }}>{t('לא נוסף עדיין')}</div>
                     </div>
-                    <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem', flexShrink: 0 }} onClick={() => handleReviewImportEvent(e)}>➕ הוסף</button>
+                    <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem', flexShrink: 0 }} onClick={() => handleReviewImportEvent(e)}>➕ {t('הוסף')}</button>
                   </div>
                 ))}
 
                 <button type="button" className="btn btn-secondary" style={{ marginTop: '0.85rem', width: '100%' }} onClick={() => { setSelectedDay(null); resetForm(); setFormDate(isoDate); setShowEventForm(true); }}>
-                  <Plus size={14} /> <span>אירוע חדש ביום זה</span>
+                  <Plus size={14} /> <span>{t('אירוע חדש ביום זה')}</span>
                 </button>
               </div>
             </div>
@@ -1484,7 +1484,7 @@ export default function App() {
               </button>
               <h2 className="form-title" id="form-heading" style={{ marginBottom: '1rem' }}>
                 {editingPerson ? <Edit size={20} /> : <Plus size={20} />}
-                <span>{editingPerson ? 'עריכת אירוע' : 'הוספת אירוע'}</span>
+                <span>{editingPerson ? t('עריכת אירוע') : t('הוספת אירוע')}</span>
               </h2>
 
               <form onSubmit={handleSubmitPerson}>
@@ -1496,31 +1496,31 @@ export default function App() {
                     style={{ fontSize: '0.8rem', padding: '0.5rem 0.75rem' }}
                   >
                     <Import size={14} />
-                    <span>ייבוא מאנשי קשר 📱</span>
+                    <span>{t('ייבוא מאנשי קשר 📱')}</span>
                   </button>
                 </div>
 
                 {/* Feature 3: Separate First Name and Surname */}
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '1.25rem' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" htmlFor="input-first-name">שם פרטי</label>
+                    <label className="form-label" htmlFor="input-first-name">{t('שם פרטי')}</label>
                     <input
                       id="input-first-name"
                       type="text"
                       required
                       className="form-input"
-                      placeholder="ישראל"
+                      placeholder={t('ישראל')}
                       value={formFirstName}
                       onChange={(e) => setFormFirstName(e.target.value)}
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" htmlFor="input-last-name">שם משפחה</label>
+                    <label className="form-label" htmlFor="input-last-name">{t('שם משפחה')}</label>
                     <input
                       id="input-last-name"
                       type="text"
                       className="form-input"
-                      placeholder="ישראלי"
+                      placeholder={t('ישראלי')}
                       value={formLastName}
                       onChange={(e) => setFormLastName(e.target.value)}
                     />
@@ -1528,7 +1528,7 @@ export default function App() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="select-occasion">סוג האירוע</label>
+                  <label className="form-label" htmlFor="select-occasion">{t('סוג האירוע')}</label>
                   <select
                     id="select-occasion"
                     className="form-select"
@@ -1536,7 +1536,7 @@ export default function App() {
                     onChange={(e) => setFormOccasion(e.target.value === 'אחר' ? '' : e.target.value)}
                   >
                     {OCCASIONS.map(o => (
-                      <option key={o} value={o}>{o === 'אחר' ? 'אחר (טקסט חופשי)' : o}</option>
+                      <option key={o} value={o}>{o === 'אחר' ? t('אחר (טקסט חופשי)') : t(o)}</option>
                     ))}
                   </select>
                   {(!OCCASIONS.includes(formOccasion as typeof OCCASIONS[number]) || formOccasion === 'אחר') && (
@@ -1544,7 +1544,7 @@ export default function App() {
                       type="text"
                       className="form-input"
                       style={{ marginTop: '0.5rem' }}
-                      placeholder="הקלד/י סוג אירוע מותאם אישית (למשל: בר מצווה, פרישה...)"
+                      placeholder={t('הקלד/י סוג אירוע מותאם אישית (למשל: בר מצווה, פרישה...)')}
                       value={formOccasion === 'אחר' ? '' : formOccasion}
                       onChange={(e) => setFormOccasion(e.target.value)}
                     />
@@ -1552,7 +1552,7 @@ export default function App() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="input-date">תאריך האירוע</label>
+                  <label className="form-label" htmlFor="input-date">{t('תאריך האירוע')}</label>
                   <input
                     id="input-date"
                     type="date"
@@ -1568,10 +1568,10 @@ export default function App() {
                   <div className="form-group">
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                       <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
-                        🕎 תאריך עברי: <strong>{formatHebrewDate(formHebrewDay, formHebrewMonth)}</strong>
+                        🕎 {t('תאריך עברי')}: <strong>{formatHebrewDate(formHebrewDay, formHebrewMonth)}</strong>
                       </span>
                       <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.2rem 0.55rem', fontSize: '0.75rem' }} onClick={() => setShowHebrewEdit(v => !v)}>
-                        {showHebrewEdit ? 'סגור' : 'ערוך'}
+                        {showHebrewEdit ? t('סגור') : t('ערוך')}
                       </button>
                     </div>
 
@@ -1592,23 +1592,23 @@ export default function App() {
                         </select>
                         {formHebrewEdited && (
                           <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.72rem' }} onClick={() => setFormHebrewEdited(false)}>
-                            אפס לאוטומטי
+                            {t('אפס לאוטומטי')}
                           </button>
                         )}
                       </div>
                     )}
 
                     <div style={{ marginTop: '0.75rem' }}>
-                      <label className="form-label" htmlFor="select-date-mode" style={{ fontSize: '0.85rem' }}>מתי לברך / להזכיר</label>
+                      <label className="form-label" htmlFor="select-date-mode" style={{ fontSize: '0.85rem' }}>{t('מתי לברך / להזכיר')}</label>
                       <select
                         id="select-date-mode"
                         className="form-select"
                         value={formDateMode}
                         onChange={(e) => setFormDateMode(e.target.value as 'gregorian' | 'hebrew' | 'both')}
                       >
-                        <option value="gregorian">בתאריך הלועזי בלבד</option>
-                        <option value="hebrew">בתאריך העברי בלבד</option>
-                        <option value="both">בשני התאריכים</option>
+                        <option value="gregorian">{t('בתאריך הלועזי בלבד')}</option>
+                        <option value="hebrew">{t('בתאריך העברי בלבד')}</option>
+                        <option value="both">{t('בשני התאריכים')}</option>
                       </select>
                     </div>
                   </div>
@@ -1616,7 +1616,7 @@ export default function App() {
 
                 {/* Feature 1: Event Periodicity Dropdown */}
                 <div className="form-group">
-                  <label className="form-label" htmlFor="select-recurrence-type">מחזוריות האירוע</label>
+                  <label className="form-label" htmlFor="select-recurrence-type">{t('מחזוריות האירוע')}</label>
                   <select
                     id="select-recurrence-type"
                     className="form-select"
@@ -1632,15 +1632,15 @@ export default function App() {
                       }
                     }}
                   >
-                    <option value="once">אירוע חד-פעמי (ללא חזרה)</option>
-                    <option value="yearly">שנתי (חוזר כל שנה)</option>
-                    <option value="monthly">חודשי (חוזר כל חודש)</option>
-                    <option value="weekly">שבועי (חוזר כל שבוע)</option>
+                    <option value="once">{t('אירוע חד-פעמי (ללא חזרה)')}</option>
+                    <option value="yearly">{t('שנתי (חוזר כל שנה)')}</option>
+                    <option value="monthly">{t('חודשי (חוזר כל חודש)')}</option>
+                    <option value="weekly">{t('שבועי (חוזר כל שבוע)')}</option>
                   </select>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="select-relation">מערכת יחסים</label>
+                  <label className="form-label" htmlFor="select-relation">{t('מערכת יחסים')}</label>
                   <select
                     id="select-relation"
                     className="form-select"
@@ -1648,7 +1648,7 @@ export default function App() {
                     onChange={(e) => e.target.value === 'אחר' ? setFormRelation('') : handleRelationChange(e.target.value)}
                   >
                     {RELATIONS.map(r => (
-                      <option key={r} value={r}>{r === 'אחר' ? 'אחר (טקסט חופשי)' : r}</option>
+                      <option key={r} value={r}>{r === 'אחר' ? t('אחר (טקסט חופשי)') : t(r)}</option>
                     ))}
                   </select>
                   {(!RELATIONS.includes(formRelation) || formRelation === 'אחר') && (
@@ -1656,7 +1656,7 @@ export default function App() {
                       type="text"
                       className="form-input"
                       style={{ marginTop: '0.5rem' }}
-                      placeholder="הקלד/י קשר מותאם אישית (למשל: מנהל/ת, מורה, בן/בת דוד שני...)"
+                      placeholder={t('הקלד/י קשר מותאם אישית (למשל: מנהל/ת, מורה, בן/בת דוד שני...)')}
                       value={formRelation === 'אחר' ? '' : formRelation}
                       onChange={(e) => setFormRelation(e.target.value)}
                     />
@@ -1672,12 +1672,12 @@ export default function App() {
                       onChange={(e) => setFormUseFirstNameOnly(e.target.checked)}
                       style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                     />
-                    <span>השתמש בשם פרטי בלבד בברכה</span>
+                    <span>{t('השתמש בשם פרטי בלבד בברכה')}</span>
                   </label>
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">מגדר (עבור דקדוק הברכה)</label>
+                  <label className="form-label">{t('מגדר (עבור דקדוק הברכה)')}</label>
                   <div className="gender-radio-group">
                     <label className="gender-radio-label">
                       <input
@@ -1687,7 +1687,7 @@ export default function App() {
                         checked={formGender === 'Male'}
                         onChange={() => setFormGender('Male')}
                       />
-                      <span>זכר</span>
+                      <span>{t('זכר')}</span>
                     </label>
                     <label className="gender-radio-label">
                       <input
@@ -1697,7 +1697,7 @@ export default function App() {
                         checked={formGender === 'Female'}
                         onChange={() => setFormGender('Female')}
                       />
-                      <span>נקבה</span>
+                      <span>{t('נקבה')}</span>
                     </label>
                     <label className="gender-radio-label">
                       <input
@@ -1707,7 +1707,7 @@ export default function App() {
                         checked={formGender === 'Couple'}
                         onChange={() => setFormGender('Couple')}
                       />
-                      <span>זוג / רבים</span>
+                      <span>{t('זוג / רבים')}</span>
                     </label>
                   </div>
                   {formGender === 'Couple' && (
@@ -1726,7 +1726,7 @@ export default function App() {
                       onChange={(e) => setFormViaProxy(e.target.checked)}
                       style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                     />
-                    <span>שליחת הברכה דרך מישהו אחר (פרוקסי)</span>
+                    <span>{t('שליחת הברכה דרך מישהו אחר (פרוקסי)')}</span>
                   </label>
                   {formViaProxy && (
                     <div style={{ marginTop: '0.6rem', padding: '0.75rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
@@ -1734,38 +1734,38 @@ export default function App() {
                         הברכה תופנה אל מקבל/ת הברכה (למשל אח/ות או קבוצת משפחה) ותברך אותו/ה לרגל האירוע של <strong>{formFirstName || 'בעל האירוע'}</strong>. הטלפון למעלה ישמש לשליחה אל מקבל/ת הברכה.
                       </p>
                       <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>שם מקבל/ת הברכה (למי לשלוח)</label>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('שם מקבל/ת הברכה (למי לשלוח)')}</label>
                         <input
                           type="text"
                           className="form-input"
-                          placeholder="למשל: דני / משפחת כהן"
+                          placeholder={t('למשל: דני / משפחת כהן')}
                           value={formProxyName}
                           onChange={(e) => setFormProxyName(e.target.value)}
                         />
                       </div>
                       <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>מגדר מקבל/ת הברכה</label>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('מגדר מקבל/ת הברכה')}</label>
                         <div className="gender-radio-group">
                           <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                             <input type="radio" name="proxyGender" className="gender-radio-input" checked={formProxyGender === 'Male'} onChange={() => setFormProxyGender('Male')} />
-                            <span>זכר</span>
+                            <span>{t('זכר')}</span>
                           </label>
                           <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                             <input type="radio" name="proxyGender" className="gender-radio-input" checked={formProxyGender === 'Female'} onChange={() => setFormProxyGender('Female')} />
-                            <span>נקבה</span>
+                            <span>{t('נקבה')}</span>
                           </label>
                           <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                             <input type="radio" name="proxyGender" className="gender-radio-input" checked={formProxyGender === 'Couple'} onChange={() => setFormProxyGender('Couple')} />
-                            <span>זוג / רבים</span>
+                            <span>{t('זוג / רבים')}</span>
                           </label>
                         </div>
                       </div>
                       <div>
-                        <label className="form-label" style={{ fontSize: '0.75rem' }}>הקשר של בעל/ת האירוע למקבל/ת הברכה (אופציונלי)</label>
+                        <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('הקשר של בעל/ת האירוע למקבל/ת הברכה (אופציונלי)')}</label>
                         <input
                           type="text"
                           className="form-input"
-                          placeholder="למשל: הבן שלך, הנכדה שלכם"
+                          placeholder={t('למשל: הבן שלך, הנכדה שלכם')}
                           value={formCelebrantLink}
                           onChange={(e) => setFormCelebrantLink(e.target.value)}
                         />
@@ -1777,12 +1777,12 @@ export default function App() {
                 <div className="form-group" style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.75rem', marginTop: '0.75rem' }}>
                   <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', color: 'var(--primary)' }}>
                     <Bell size={14} />
-                    <span>הגדרות התראה (אנדרואיד / דפדפן)</span>
+                    <span>{t('הגדרות התראה (אנדרואיד / דפדפן)')}</span>
                   </label>
                   
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginTop: '0.4rem' }}>
                     <div>
-                      <label className="form-label" htmlFor="select-notify-days" style={{ fontSize: '0.75rem' }}>מועד ההתראה</label>
+                      <label className="form-label" htmlFor="select-notify-days" style={{ fontSize: '0.75rem' }}>{t('מועד ההתראה')}</label>
                       <select
                         id="select-notify-days"
                         className="form-select"
@@ -1790,15 +1790,15 @@ export default function App() {
                         value={formNotifyDays}
                         onChange={(e) => setFormNotifyDays(Number(e.target.value))}
                       >
-                        <option value={0}>ביום האירוע</option>
-                        <option value={1}>יום לפני</option>
-                        <option value={2}>יומיים לפני</option>
-                        <option value={7}>שבוע לפני</option>
+                        <option value={0}>{t('ביום האירוע')}</option>
+                        <option value={1}>{t('יום לפני')}</option>
+                        <option value={2}>{t('יומיים לפני')}</option>
+                        <option value={7}>{t('שבוע לפני')}</option>
                       </select>
                     </div>
 
                     <div>
-                      <label className="form-label" htmlFor="input-notify-hour" style={{ fontSize: '0.75rem' }}>שעת ההתראה</label>
+                      <label className="form-label" htmlFor="input-notify-hour" style={{ fontSize: '0.75rem' }}>{t('שעת ההתראה')}</label>
                       <input
                         id="input-notify-hour"
                         type="time"
@@ -1812,7 +1812,7 @@ export default function App() {
                 </div>
 
                 <div className="form-group" style={{ marginTop: '0.75rem' }}>
-                  <label className="form-label" htmlFor="input-phone">טלפון לשליחה בוואטסאפ (אופציונלי)</label>
+                  <label className="form-label" htmlFor="input-phone">{t('טלפון לשליחה בוואטסאפ (אופציונלי)')}</label>
                   <input
                     id="input-phone"
                     type="tel"
@@ -1824,12 +1824,12 @@ export default function App() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="input-notes">הערות נוספות (תחביבים, איחולים מיוחדים)</label>
+                  <label className="form-label" htmlFor="input-notes">{t('הערות נוספות (תחביבים, איחולים מיוחדים)')}</label>
                   <textarea
                     id="input-notes"
                     rows={2}
                     className="form-textarea"
-                    placeholder="אוהב שוקולד, קודם לאחרונה, מאחל לו הצלחה..."
+                    placeholder={t('אוהב שוקולד, קודם לאחרונה, מאחל לו הצלחה...')}
                     value={formNotes}
                     onChange={(e) => setFormNotes(e.target.value)}
                   />
@@ -1837,7 +1837,7 @@ export default function App() {
 
                 <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1.5rem' }}>
                   <button type="submit" className="btn btn-primary" id="btn-submit-form" style={{ flex: 1 }}>
-                    {editingPerson ? 'שמור שינויים' : 'הוסף אירוע'}
+                    {editingPerson ? t('שמור שינויים') : t('הוסף אירוע')}
                   </button>
                   <button type="button" className="btn btn-secondary" onClick={handleCloseEventForm} style={{ flex: 1 }}>
                     ביטול
@@ -2141,7 +2141,7 @@ export default function App() {
                   style={{ width: 'auto', fontSize: '0.78rem', padding: '0.35rem 0.7rem', flexShrink: 0 }}
                 >
                   <Import size={13} />
-                  <span>ייבוא מאנשי קשר 📱</span>
+                  <span>{t('ייבוא מאנשי קשר 📱')}</span>
                 </button>
               </div>
 
@@ -2152,7 +2152,7 @@ export default function App() {
                     type="text"
                     className="form-input"
                     style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                    placeholder="ישראל"
+                    placeholder={t('ישראל')}
                     value={quickFirstName}
                     onChange={(e) => setQuickFirstName(e.target.value)}
                   />
@@ -2163,7 +2163,7 @@ export default function App() {
                     type="text"
                     className="form-input"
                     style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                    placeholder="ישראלי"
+                    placeholder={t('ישראלי')}
                     value={quickLastName}
                     onChange={(e) => setQuickLastName(e.target.value)}
                   />
@@ -2223,7 +2223,7 @@ export default function App() {
                       checked={quickGender === 'Male'}
                       onChange={() => setQuickGender('Male')}
                     />
-                    <span>זכר</span>
+                    <span>{t('זכר')}</span>
                   </label>
                   <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                     <input
@@ -2233,7 +2233,7 @@ export default function App() {
                       checked={quickGender === 'Female'}
                       onChange={() => setQuickGender('Female')}
                     />
-                    <span>נקבה</span>
+                    <span>{t('נקבה')}</span>
                   </label>
                   <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                     <input
@@ -2243,7 +2243,7 @@ export default function App() {
                       checked={quickGender === 'Couple'}
                       onChange={() => setQuickGender('Couple')}
                     />
-                    <span>זוג / רבים</span>
+                    <span>{t('זוג / רבים')}</span>
                   </label>
                 </div>
 
@@ -2275,7 +2275,7 @@ export default function App() {
                       type="text"
                       className="form-input"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                      placeholder="למשל: דני / משפחת כהן"
+                      placeholder={t('למשל: דני / משפחת כהן')}
                       value={quickProxyName}
                       onChange={(e) => setQuickProxyName(e.target.value)}
                     />
@@ -2299,7 +2299,7 @@ export default function App() {
                       type="text"
                       className="form-input"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                      placeholder="למשל: הבן שלך, הנכדה שלכם"
+                      placeholder={t('למשל: הבן שלך, הנכדה שלכם')}
                       value={quickCelebrantLink}
                       onChange={(e) => setQuickCelebrantLink(e.target.value)}
                     />
@@ -2995,7 +2995,7 @@ export default function App() {
                       type="text"
                       className="form-input"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                      placeholder="ישראל"
+                      placeholder={t('ישראל')}
                       value={quickFirstName}
                       onChange={(e) => setQuickFirstName(e.target.value)}
                     />
@@ -3006,7 +3006,7 @@ export default function App() {
                       type="text"
                       className="form-input"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
-                      placeholder="ישראלי"
+                      placeholder={t('ישראלי')}
                       value={quickLastName}
                       onChange={(e) => setQuickLastName(e.target.value)}
                     />
@@ -3066,7 +3066,7 @@ export default function App() {
                         checked={quickGender === 'Male'}
                         onChange={() => setQuickGender('Male')}
                       />
-                      <span>זכר</span>
+                      <span>{t('זכר')}</span>
                     </label>
                     <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                       <input
@@ -3076,7 +3076,7 @@ export default function App() {
                         checked={quickGender === 'Female'}
                         onChange={() => setQuickGender('Female')}
                       />
-                      <span>נקבה</span>
+                      <span>{t('נקבה')}</span>
                     </label>
                     <label className="gender-radio-label" style={{ fontSize: '0.8rem' }}>
                       <input
@@ -3086,7 +3086,7 @@ export default function App() {
                         checked={quickGender === 'Couple'}
                         onChange={() => setQuickGender('Couple')}
                       />
-                      <span>זוג / רבים</span>
+                      <span>{t('זוג / רבים')}</span>
                     </label>
                   </div>
 
@@ -3262,7 +3262,7 @@ export default function App() {
 
             <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--secondary)' }}>
               <Users size={20} />
-              <span>ייבוא מאנשי קשר 📱</span>
+              <span>{t('ייבוא מאנשי קשר 📱')}</span>
             </h3>
 
             {contactsError === 'not-connected' ? (
