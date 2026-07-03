@@ -2,9 +2,7 @@ name = "greetings-ai-proxy"
 main = "greetings-ai-proxy.js"
 compatibility_date = "2024-11-01"
 
-# Optional per-IP daily rate limit. Create the namespace first:
-#   npx wrangler kv namespace create RL
-# then paste the printed id below and uncomment:
-# [[kv_namespaces]]
-# binding = "RL"
-# id = "<your-kv-namespace-id>"
+# Per-IP daily rate limit store (caps abuse of the public proxy URL).
+[[kv_namespaces]]
+binding = "RL"
+id = "31905990f9314e0289f731b31f2092e5"

@@ -62,7 +62,9 @@ export interface AppSettings {
   defaultNotifyDaysBefore: number;
 }
 
-export const DEFAULT_AI_PROVIDER: AiProvider = 'gemini';
+// Default to the built-in proxy so greetings use AI with no key. If the proxy URL is unset
+// (open-source builds without a server), the app falls back to the local Hebrew templates.
+export const DEFAULT_AI_PROVIDER: AiProvider = 'proxy';
 
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.5-flash-lite';
 

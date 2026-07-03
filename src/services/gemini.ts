@@ -214,7 +214,7 @@ const callGroq = (prompt: string, apiKey: string, model: string): Promise<string
 // Built-in AI proxy (a server you host that holds ONE key, so users need no key of their own).
 // Set AI_PROXY_URL to your deployed Cloudflare Worker URL to enable the "מובנה (ללא מפתח)" option.
 // AI_PROXY_TOKEN is optional (only if you set PROXY_TOKEN on the Worker as an extra gate).
-export const AI_PROXY_URL: string = ''; // set to your deployed Worker URL to enable the proxy option
+export const AI_PROXY_URL: string = 'https://greetings-ai-proxy.shahafdu-greetings.workers.dev';
 const AI_PROXY_TOKEN: string = '';
 export const DEFAULT_PROXY_MODEL = 'openai/gpt-oss-120b';
 
