@@ -24,6 +24,7 @@
     "@capgo/capacitor-native-biometric": "^8.4.11",
     "@ebarooni/capacitor-calendar": "^8.2.0",
     "@google/generative-ai": "^0.24.1",
+    "@hebcal/core": "^6.6.0",
     "@react-oauth/google": "^0.13.5",
     "lucide-react": "^1.18.0",
     "react": "^19.2.6",

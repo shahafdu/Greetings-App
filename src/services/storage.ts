@@ -8,6 +8,7 @@ import {
   encryptString,
   decryptString
 } from './vault';
+import { nextHebrewOccurrence } from './hebrewDate';
 
 export interface Person {
   id: string;
@@ -33,6 +34,12 @@ export interface Person {
   // If this event was imported from a synced calendar event, its source id. Used to hide that
   // event's dashed chip on the calendar — and to bring it back if this event is deleted.
   sourceEventId?: string;
+  // Hebrew (Jewish) calendar date, auto-computed from eventDate but editable. Stored as
+  // hebcal day + month numbers so the anniversary can recur on the Hebrew calendar.
+  hebrewDay?: number;
+  hebrewMonth?: number;
+  // When true, this event's recurrence + notifications follow the Hebrew date, not the Gregorian.
+  useHebrewDate?: boolean;
 }
 
 export type AiProvider = 'gemini' | 'groq' | 'openrouter' | 'proxy';
@@ -60,6 +67,8 @@ export interface AppSettings {
   googleUserName?: string;
   defaultNotifyHour: string;
   defaultNotifyDaysBefore: number;
+  // Show Hebrew (Jewish) calendar dates alongside Gregorian on the calendar + event form.
+  showHebrewDates?: boolean;
 }
 
 // Default to the built-in proxy so greetings use AI with no key. If the proxy URL is unset
@@ -455,6 +464,12 @@ export const getDaysToEvent = (person: Person): number => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  // Hebrew-date events recur on the Jewish calendar: next Gregorian date of the Hebrew anniversary.
+  if (person.useHebrewDate && person.hebrewDay && person.hebrewMonth) {
+    const next = nextHebrewOccurrence(person.hebrewDay, person.hebrewMonth, today);
+    return Math.round((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  }
+
   // If the event start date is in the future, return days until that date
   if (today < eventDate) {
     const diffTime = eventDate.getTime() - today.getTime();
@@ -515,13 +530,17 @@ export const isEventToday = (person: Person): boolean => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  if (person.useHebrewDate && person.hebrewDay && person.hebrewMonth) {
+    return nextHebrewOccurrence(person.hebrewDay, person.hebrewMonth, today).getTime() === today.getTime();
+  }
+
   if (today < eventDate) {
     return false;
   }
 
   if (!person.isRecurring || person.recurrence === 'once') {
-    return eventDate.getDate() === today.getDate() && 
-           eventDate.getMonth() === today.getMonth() && 
+    return eventDate.getDate() === today.getDate() &&
+           eventDate.getMonth() === today.getMonth() &&
            eventDate.getFullYear() === today.getFullYear();
   }
 

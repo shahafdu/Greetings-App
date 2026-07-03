@@ -7,6 +7,7 @@ import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Person } from './storage';
 import { getOccasionEmoji } from './storage';
+import { nextHebrewOccurrence } from './hebrewDate';
 
 // The next calendar date this event occurs on (or null for a past one-time event).
 const nextOccurrenceDate = (person: Person): Date | null => {
@@ -14,6 +15,11 @@ const nextOccurrenceDate = (person: Person): Date | null => {
   ev.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
+
+  // Hebrew-date events: next Gregorian date of the Hebrew anniversary.
+  if (person.useHebrewDate && person.hebrewDay && person.hebrewMonth) {
+    return nextHebrewOccurrence(person.hebrewDay, person.hebrewMonth, today);
+  }
 
   if (!person.isRecurring || person.recurrence === 'once') {
     return ev >= today ? ev : null;

@@ -734,6 +734,24 @@ body {
   align-self: flex-start;
 }
 
+.calendar-hebrew-day {
+  display: block;
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  font-family: var(--font-main);
+  line-height: 1.1;
+  margin-top: 1px;
+}
+
+.calendar-hebrew-title {
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--secondary);
+  margin-top: 2px;
+}
+
 .calendar-day-cell.today .calendar-day-number {
   color: var(--text-primary);
   font-weight: 800;

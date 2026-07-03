@@ -60,6 +60,7 @@ import {
 import type { AiProvider } from './services/storage';
 
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
+import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel } from './services/hebrewDate';
 import { scheduleEventNotifications } from './services/notifications';
 import {
   fetchGoogleContacts,
@@ -143,6 +144,12 @@ export default function App() {
   const [formProxyName, setFormProxyName] = useState('');
   const [formProxyGender, setFormProxyGender] = useState<Person['gender']>('Male');
   const [formCelebrantLink, setFormCelebrantLink] = useState('');
+  // Hebrew date (auto-computed from the Gregorian date, editable, opt-in for recurrence)
+  const [formHebrewDay, setFormHebrewDay] = useState<number | undefined>(undefined);
+  const [formHebrewMonth, setFormHebrewMonth] = useState<number | undefined>(undefined);
+  const [formUseHebrewDate, setFormUseHebrewDate] = useState(false);
+  const [formHebrewEdited, setFormHebrewEdited] = useState(false); // user manually overrode it
+  const [showHebrewEdit, setShowHebrewEdit] = useState(false);
 
   // Calendar Navigation State
   const todayDate = new Date();
@@ -264,6 +271,14 @@ export default function App() {
     })();
     return () => { if (remove) remove(); };
   }, [showEventForm, showContactsModal, showGreetingModal, selectedDay, activeTab]);
+
+  // Auto-compute the Hebrew date from the Gregorian date (unless the user overrode it).
+  useEffect(() => {
+    if (formHebrewEdited) return;
+    const h = gregToHebrew(formDate);
+    setFormHebrewDay(h?.day);
+    setFormHebrewMonth(h?.month);
+  }, [formDate, formHebrewEdited]);
 
   // Detect biometric availability, and auto-prompt fingerprint on the lock screen if enabled.
   useEffect(() => {
@@ -650,6 +665,11 @@ export default function App() {
     setFormProxyName('');
     setFormProxyGender('Male');
     setFormCelebrantLink('');
+    setFormHebrewDay(undefined);
+    setFormHebrewMonth(undefined);
+    setFormUseHebrewDate(false);
+    setFormHebrewEdited(false);
+    setShowHebrewEdit(false);
   };
 
   // Open the (modal) form blank for a new event.
@@ -688,7 +708,10 @@ export default function App() {
       proxyGender: formViaProxy ? formProxyGender : undefined,
       celebrantRelationToProxy: formViaProxy && formCelebrantLink.trim() ? formCelebrantLink.trim() : undefined,
       // Link to the synced event this was imported from (new import), or keep the existing link on edit.
-      sourceEventId: pendingImportEventId || editingPerson?.sourceEventId || undefined
+      sourceEventId: pendingImportEventId || editingPerson?.sourceEventId || undefined,
+      hebrewDay: formHebrewDay,
+      hebrewMonth: formHebrewMonth,
+      useHebrewDate: formUseHebrewDate
     };
 
     if (editingPerson) {
@@ -731,6 +754,13 @@ export default function App() {
     setFormProxyName(person.proxyName || '');
     setFormProxyGender(person.proxyGender || 'Male');
     setFormCelebrantLink(person.celebrantRelationToProxy || '');
+    setFormHebrewDay(person.hebrewDay);
+    setFormHebrewMonth(person.hebrewMonth);
+    setFormUseHebrewDate(!!person.useHebrewDate);
+    // Treat as manually edited only if the stored Hebrew date differs from the auto value.
+    const auto = gregToHebrew(person.eventDate);
+    setFormHebrewEdited(!!person.hebrewDay && (!auto || person.hebrewDay !== auto.day || person.hebrewMonth !== auto.month));
+    setShowHebrewEdit(false);
     setShowEventForm(true);
   };
 
@@ -985,20 +1015,28 @@ export default function App() {
   );
 
   // Saved events + pending (synced, not-yet-added) events that fall on a given day.
+  // Does a person's event fall on a given calendar day? Hebrew-date events land on the
+  // Gregorian date of their Hebrew anniversary for that day's year.
+  const personOccursOn = (p: Person, cellDate: Date): boolean => {
+    if (p.useHebrewDate && p.hebrewDay && p.hebrewMonth) {
+      const anniv = hebrewAnniversaryInGregYear(p.hebrewDay, p.hebrewMonth, cellDate.getFullYear());
+      return !!anniv && anniv.getMonth() === cellDate.getMonth() && anniv.getDate() === cellDate.getDate();
+    }
+    const pDate = new Date(p.eventDate);
+    pDate.setHours(0, 0, 0, 0);
+    if (cellDate < pDate) return false;
+    if (!p.isRecurring || p.recurrence === 'once') {
+      return pDate.getFullYear() === cellDate.getFullYear() && pDate.getMonth() === cellDate.getMonth() && pDate.getDate() === cellDate.getDate();
+    }
+    if (p.recurrence === 'weekly') return pDate.getDay() === cellDate.getDay();
+    if (p.recurrence === 'monthly') return pDate.getDate() === cellDate.getDate();
+    return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
+  };
+
   const getEventsForDay = (year: number, month: number, day: number) => {
     const cellDate = new Date(year, month, day);
     cellDate.setHours(0, 0, 0, 0);
-    const saved = people.filter(p => {
-      const pDate = new Date(p.eventDate);
-      pDate.setHours(0, 0, 0, 0);
-      if (cellDate < pDate) return false;
-      if (!p.isRecurring || p.recurrence === 'once') {
-        return pDate.getFullYear() === cellDate.getFullYear() && pDate.getMonth() === cellDate.getMonth() && pDate.getDate() === cellDate.getDate();
-      }
-      if (p.recurrence === 'weekly') return pDate.getDay() === cellDate.getDay();
-      if (p.recurrence === 'monthly') return pDate.getDate() === cellDate.getDate();
-      return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
-    });
+    const saved = people.filter(p => personOccursOn(p, cellDate));
     const pending = googleEvents.filter(e => {
       if (importedSourceIds.has(e.id)) return false;
       const [y, m, d] = e.date.split('-').map(Number);
@@ -1033,34 +1071,9 @@ export default function App() {
     }
 
     return cells.map((cell, index) => {
-      const cellEvents = people.filter(p => {
-        const pDate = new Date(p.eventDate);
-        pDate.setHours(0, 0, 0, 0);
-        const cellDate = new Date(cell.year, cell.month, cell.day);
-        cellDate.setHours(0, 0, 0, 0);
-
-        // If the cell date is before the event start date, it cannot occur
-        if (cellDate < pDate) {
-          return false;
-        }
-
-        if (!p.isRecurring || p.recurrence === 'once') {
-          return pDate.getFullYear() === cellDate.getFullYear() &&
-                 pDate.getMonth() === cellDate.getMonth() &&
-                 pDate.getDate() === cellDate.getDate();
-        }
-
-        if (p.recurrence === 'weekly') {
-          return pDate.getDay() === cellDate.getDay();
-        }
-
-        if (p.recurrence === 'monthly') {
-          return pDate.getDate() === cellDate.getDate();
-        }
-
-        // Yearly
-        return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
-      });
+      const cellDateObj = new Date(cell.year, cell.month, cell.day);
+      cellDateObj.setHours(0, 0, 0, 0);
+      const cellEvents = people.filter(p => personOccursOn(p, cellDateObj));
 
       // Pending (not-yet-imported) Google Calendar events that fall on this cell's date.
       const cellGoogleEvents = googleEvents.filter(e => {
@@ -1086,7 +1099,12 @@ export default function App() {
             if (!cell.isCurrentMonth) { setCalendarMonth(cell.month); setCalendarYear(cell.year); }
           }}
         >
-          <span className="calendar-day-number">{cell.day}</span>
+          <span className="calendar-day-number">
+            {cell.day}
+            {settings.showHebrewDates && (
+              <span className="calendar-hebrew-day">{hebrewDayLabel(cell.year, cell.month, cell.day)}</span>
+            )}
+          </span>
           <div className="calendar-birthdays-container">
             {cellEvents.map(p => (
               <div key={p.id} className={`calendar-birthday-dot ${getRelationCategory(p.relation)}`} title={`${p.firstName} (${p.occasion} - ${p.relation})`}>
@@ -1371,6 +1389,48 @@ export default function App() {
                     onChange={(e) => setFormDate(e.target.value)}
                   />
                 </div>
+
+                {/* Hebrew date (auto from the Gregorian date, editable, opt-in for recurrence) */}
+                {settings.showHebrewDates && !!formHebrewDay && !!formHebrewMonth && (
+                  <div className="form-group">
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        🕎 תאריך עברי: <strong>{formatHebrewDate(formHebrewDay, formHebrewMonth)}</strong>
+                      </span>
+                      <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.2rem 0.55rem', fontSize: '0.75rem' }} onClick={() => setShowHebrewEdit(v => !v)}>
+                        {showHebrewEdit ? 'סגור' : 'ערוך'}
+                      </button>
+                    </div>
+
+                    {showHebrewEdit && (
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
+                        <input
+                          type="number" min={1} max={30}
+                          className="form-input numbers-font" style={{ width: '75px' }}
+                          value={formHebrewDay}
+                          onChange={(e) => { setFormHebrewDay(Number(e.target.value)); setFormHebrewEdited(true); }}
+                        />
+                        <select
+                          className="form-select" style={{ width: 'auto', flex: 1, minWidth: '120px' }}
+                          value={formHebrewMonth}
+                          onChange={(e) => { setFormHebrewMonth(Number(e.target.value)); setFormHebrewEdited(true); }}
+                        >
+                          {JEWISH_MONTHS.map(m => <option key={m.num} value={m.num}>{m.name}</option>)}
+                        </select>
+                        {formHebrewEdited && (
+                          <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.72rem' }} onClick={() => setFormHebrewEdited(false)}>
+                            אפס לאוטומטי
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.65rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={formUseHebrewDate} onChange={(e) => setFormUseHebrewDate(e.target.checked)} />
+                      <span>חשב תזכורות ומחזוריות לפי התאריך העברי</span>
+                    </label>
+                  </div>
+                )}
 
                 {/* Feature 1: Event Periodicity Dropdown */}
                 <div className="form-group">
@@ -1797,6 +1857,9 @@ export default function App() {
               </button>
               <h2 className="calendar-title-text" id="calendar-month-year">
                 {HEBREW_MONTHS[calendarMonth]} {calendarYear}
+                {settings.showHebrewDates && (
+                  <span className="calendar-hebrew-title">{hebrewMonthYearLabel(calendarYear, calendarMonth)}</span>
+                )}
               </h2>
               <button onClick={handlePrevMonth} className="calendar-nav-btn" title="חודש קודם">
                 <ChevronLeft size={20} />
@@ -2203,7 +2266,22 @@ export default function App() {
         {activeTab === 'settings' && (
           <section className="glass-card section-panel settings-panel" id="settings-section">
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>הגדרות האפליקציה</h2>
-            
+
+            {/* Hebrew calendar toggle */}
+            <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!settings.showHebrewDates}
+                  onChange={(e) => { const s = { ...settings, showHebrewDates: e.target.checked }; setLocalSettings(s); saveSettings(s); }}
+                />
+                <span style={{ fontWeight: 700 }}>🕎 הצג תאריכים עבריים</span>
+              </label>
+              <p className="settings-description" style={{ fontSize: '0.82rem', marginTop: '0.5rem', lineHeight: '1.5' }}>
+                מציג את התאריך העברי לצד הלועזי בלוח השנה ובטופס האירוע. לכל אירוע ניתן לבחור לחשב תזכורות ומחזוריות לפי התאריך העברי.
+              </p>
+            </div>
+
             {/* Google Authentication Box */}
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(138,43,226,0.2)' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
