@@ -1,0 +1,73 @@
+// Encrypted event sharing. Selected events are bundled and encrypted with a short code
+// (PBKDF2 + AES-GCM), producing a text blob written to a file. The recipient enters the same
+// code (sent out-of-band) to decrypt and merge. Device-specific fields are stripped so events
+// migrate cleanly to another device or person (a phone number is plain, portable data).
+
+import type { Person } from './storage';
+
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+const SHARE_MAGIC = 'MTB1';
+
+const toB64 = (buf: ArrayBuffer | Uint8Array): string => {
+  const bytes = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let bin = '';
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+};
+const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+const deriveKey = async (code: string, salt: Uint8Array): Promise<CryptoKey> => {
+  const baseKey = await crypto.subtle.importKey('raw', encoder.encode(code), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 200000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  );
+};
+
+// A short, unambiguous share code (excludes easily-confused characters).
+export const generateShareCode = (): string => {
+  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+  const bytes = crypto.getRandomValues(new Uint8Array(6));
+  return Array.from(bytes, b => alphabet[b % alphabet.length]).join('');
+};
+
+// The portable form of an event: drop the local id and the calendar-sync link.
+export type PortableEvent = Omit<Person, 'id' | 'sourceEventId'>;
+
+const toPortable = (p: Person): PortableEvent => {
+  const { id: _id, sourceEventId: _s, ...rest } = p;
+  void _id; void _s;
+  return rest;
+};
+
+export const encryptEvents = async (events: Person[], code: string): Promise<string> => {
+  const payload = JSON.stringify({ v: 1, events: events.map(toPortable) });
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await deriveKey(code, salt);
+  const ct = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv: iv as BufferSource }, key, encoder.encode(payload) as BufferSource
+  );
+  return `${SHARE_MAGIC}.${toB64(salt)}.${toB64(iv)}.${toB64(ct)}`;
+};
+
+export const decryptEvents = async (blob: string, code: string): Promise<PortableEvent[]> => {
+  const parts = blob.trim().split('.');
+  if (parts.length !== 4 || parts[0] !== SHARE_MAGIC) throw new Error('קובץ שיתוף לא תקין.');
+  const [, saltB64, ivB64, ctB64] = parts;
+  const key = await deriveKey(code.trim().toUpperCase(), fromB64(saltB64));
+  let pt: ArrayBuffer;
+  try {
+    pt = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: fromB64(ivB64) as BufferSource }, key, fromB64(ctB64) as BufferSource
+    );
+  } catch {
+    throw new Error('הקוד שגוי או שהקובץ פגום.');
+  }
+  const data = JSON.parse(decoder.decode(pt)) as { events?: PortableEvent[] };
+  return data.events || [];
+};

@@ -23,6 +23,7 @@ import {
   Bell,
   LogIn,
   Import,
+  Share2,
   CheckCircle,
   ArrowUp,
   ArrowDown
@@ -63,6 +64,7 @@ import type { AiProvider } from './services/storage';
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
 import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel } from './services/hebrewDate';
 import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
+import { generateShareCode, encryptEvents, decryptEvents, type PortableEvent } from './services/share';
 import { scheduleEventNotifications } from './services/notifications';
 import {
   fetchGoogleContacts,
@@ -155,6 +157,18 @@ export default function App() {
   // In-app update prompt (GitHub Releases)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [updateDismissed, setUpdateDismissed] = useState(false);
+  // Share / import events
+  const [showShareModal, setShowShareModal] = useState(false);
+  const [shareSelectedIds, setShareSelectedIds] = useState<Set<string>>(new Set());
+  const [shareCode, setShareCode] = useState('');
+  const [shareBlob, setShareBlob] = useState('');
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importBlob, setImportBlob] = useState('');
+  const [importFileName, setImportFileName] = useState('');
+  const [importCode, setImportCode] = useState('');
+  const [importPreview, setImportPreview] = useState<PortableEvent[] | null>(null);
+  const [importError, setImportError] = useState('');
+  const [importDone, setImportDone] = useState(0);
 
   // Calendar Navigation State
   const todayDate = new Date();
@@ -700,6 +714,92 @@ export default function App() {
     resetForm();
     setPendingImportEventId(null);
     setShowEventForm(false);
+  };
+
+  // ---- Share / import events ----
+  const openShareModal = () => {
+    setShareSelectedIds(new Set(people.map(p => p.id))); // default: all selected
+    setShareCode('');
+    setShareBlob('');
+    setShowShareModal(true);
+  };
+
+  const toggleShareId = (id: string) => {
+    setShareSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+  };
+
+  const handleGenerateShare = async () => {
+    const selected = people.filter(p => shareSelectedIds.has(p.id));
+    if (selected.length === 0) return;
+    const code = generateShareCode();
+    setShareBlob(await encryptEvents(selected, code));
+    setShareCode(code);
+  };
+
+  const handleSendShareFile = async () => {
+    const fileName = `greetings-events-${new Date().toISOString().slice(0, 10)}.mtb`;
+    if (Capacitor.isNativePlatform()) {
+      const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+      const { Share } = await import('@capacitor/share');
+      const res = await Filesystem.writeFile({ path: fileName, data: shareBlob, directory: Directory.Cache, encoding: Encoding.UTF8 });
+      await Share.share({ title: 'אירועים לשיתוף', text: 'ייבא/י את הקובץ באפליקציה. הקוד נשלח בנפרד.', url: res.uri });
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([shareBlob], { type: 'application/octet-stream' }));
+      a.download = fileName;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+  };
+
+  const openImportModal = () => {
+    setImportBlob('');
+    setImportFileName('');
+    setImportCode('');
+    setImportPreview(null);
+    setImportError('');
+    setImportDone(0);
+    setShowImportModal(true);
+  };
+
+  const handleImportFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportFileName(file.name);
+    setImportBlob((await file.text()).trim());
+    setImportPreview(null);
+    setImportError('');
+  };
+
+  const handleDecryptImport = async () => {
+    setImportError('');
+    try {
+      setImportPreview(await decryptEvents(importBlob, importCode));
+    } catch (err) {
+      setImportPreview(null);
+      setImportError(err instanceof Error ? err.message : 'שגיאה בפענוח.');
+    }
+  };
+
+  const handleConfirmImport = () => {
+    if (!importPreview) return;
+    const key = (e: { firstName: string; lastName?: string; eventDate: string; occasion: string }) =>
+      `${e.firstName}|${e.lastName || ''}|${e.eventDate}|${e.occasion}`;
+    const existing = new Set(people.map(key));
+    let added = 0;
+    importPreview.forEach(ev => {
+      if (existing.has(key(ev))) return;
+      addPerson(ev);
+      existing.add(key(ev));
+      added++;
+    });
+    refreshPeopleList();
+    setImportDone(added);
+    setImportPreview(null);
   };
 
   // Form Submit (Add / Edit)
@@ -2323,6 +2423,25 @@ export default function App() {
           <section className="glass-card section-panel settings-panel" id="settings-section">
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>הגדרות האפליקציה</h2>
 
+            {/* Share / import events */}
+            <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <Share2 size={18} />
+                <span>שיתוף וגיבוי אירועים</span>
+              </h3>
+              <p className="settings-description" style={{ fontSize: '0.82rem', marginBottom: '1rem', lineHeight: '1.5' }}>
+                ייצוא אירועים כקובץ מוצפן לשיתוף עם מכשיר אחר או אדם אחר (למשל בן/בת זוג). הקוד לפענוח נשלח בנפרד.
+              </p>
+              <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={openShareModal} disabled={people.length === 0}>
+                  <Share2 size={16} /> <span>שתף/י אירועים</span>
+                </button>
+                <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={openImportModal}>
+                  <Import size={16} /> <span>ייבוא אירועים</span>
+                </button>
+              </div>
+            </div>
+
             {/* Google Authentication Box */}
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(138,43,226,0.2)' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2677,6 +2796,109 @@ export default function App() {
           </section>
         )}
       </main>
+
+      {/* Share events modal */}
+      {showShareModal && (
+        <div className="modal-overlay" style={{ zIndex: 4000 }} onClick={() => setShowShareModal(false)}>
+          <div className="glass-card modal-content" style={{ maxWidth: '480px' }} onClick={ev => ev.stopPropagation()}>
+            <button type="button" className="icon-btn modal-close-btn" onClick={() => setShowShareModal(false)} title="סגור"><X size={20} /></button>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Share2 size={20} /> <span>שיתוף אירועים</span>
+            </h3>
+
+            {!shareCode ? (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                  <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>נבחרו {shareSelectedIds.size} מתוך {people.length}</span>
+                  <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                    onClick={() => setShareSelectedIds(shareSelectedIds.size === people.length ? new Set() : new Set(people.map(p => p.id)))}>
+                    {shareSelectedIds.size === people.length ? 'נקה הכל' : 'בחר/י הכל'}
+                  </button>
+                </div>
+                <div style={{ maxHeight: '45vh', overflowY: 'auto', margin: '0.5rem 0 1rem' }}>
+                  {people.map(p => (
+                    <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={shareSelectedIds.has(p.id)} onChange={() => toggleShareId(p.id)} />
+                      <span style={{ fontWeight: 600 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginInlineStart: 'auto' }}>{p.occasion}</span>
+                    </label>
+                  ))}
+                </div>
+                <button type="button" className="btn btn-primary" onClick={handleGenerateShare} disabled={shareSelectedIds.size === 0}>
+                  צור קובץ מוצפן ({shareSelectedIds.size})
+                </button>
+              </>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.5' }}>
+                  הקובץ מוכן. שתף/י אותו, ושלח/י את הקוד <strong>בנפרד</strong> (לא באותה הודעה):
+                </p>
+                <div style={{ textAlign: 'center', fontSize: '1.8rem', fontWeight: 800, letterSpacing: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', fontFamily: 'var(--font-numbers)' }}>
+                  {shareCode}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendShareFile}>
+                    <Share2 size={16} /> <span>{Capacitor.isNativePlatform() ? 'שתף/י את הקובץ' : 'הורד/י את הקובץ'}</span>
+                  </button>
+                  <button type="button" className="icon-btn" title="העתק קוד" onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Import events modal */}
+      {showImportModal && (
+        <div className="modal-overlay" style={{ zIndex: 4000 }} onClick={() => setShowImportModal(false)}>
+          <div className="glass-card modal-content" style={{ maxWidth: '480px' }} onClick={ev => ev.stopPropagation()}>
+            <button type="button" className="icon-btn modal-close-btn" onClick={() => setShowImportModal(false)} title="סגור"><X size={20} /></button>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <Import size={20} /> <span>ייבוא אירועים</span>
+            </h3>
+
+            {importDone > 0 ? (
+              <div style={{ textAlign: 'center', padding: '1rem' }}>
+                <p style={{ fontSize: '1rem', color: 'var(--success)', fontWeight: 700, marginBottom: '1rem' }}>יובאו {importDone} אירועים חדשים ✓</p>
+                <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowImportModal(false)}>סגור</button>
+              </div>
+            ) : (
+              <>
+                <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.75rem' }}>
+                  <Import size={16} /> <span>{importFileName || 'בחר/י קובץ שיתוף'}</span>
+                  <input type="file" accept=".mtb,.json,application/json,text/plain" style={{ display: 'none' }} onChange={handleImportFilePick} />
+                </label>
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="import-code">קוד הפענוח</label>
+                  <input id="import-code" type="text" className="form-input numbers-font" placeholder="6 תווים" value={importCode}
+                    onChange={(e) => setImportCode(e.target.value)} style={{ letterSpacing: '3px', textAlign: 'center' }} />
+                </div>
+
+                {importError && <p style={{ color: 'var(--danger, #ff5c5c)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>❌ {importError}</p>}
+
+                {importPreview ? (
+                  <>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.5rem 0' }}>נמצאו {importPreview.length} אירועים:</p>
+                    <div style={{ maxHeight: '35vh', overflowY: 'auto', marginBottom: '1rem' }}>
+                      {importPreview.map((ev, i) => (
+                        <div key={i} style={{ padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
+                          {getOccasionEmoji(ev.occasion)} {ev.firstName} {ev.lastName || ''} · <span style={{ color: 'var(--text-secondary)' }}>{ev.occasion}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <button type="button" className="btn btn-primary" onClick={handleConfirmImport}>ייבא/י ומזג/י</button>
+                  </>
+                ) : (
+                  <button type="button" className="btn btn-primary" onClick={handleDecryptImport} disabled={!importBlob || !importCode.trim()}>
+                    פענח/י ותצוגה מקדימה
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Greeting Modal (Feature 2 & 6: On Demand and Larger Textarea) */}
       {showGreetingModal && (
