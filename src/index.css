@@ -54,7 +54,9 @@ body {
   background-attachment: fixed;
   color: var(--text-primary);
   min-height: 100vh;
-  overflow-x: hidden;
+  /* clip (not hidden): prevents horizontal scroll WITHOUT turning body into a scroll
+     container (hidden would compute overflow-y:auto and break position:sticky). */
+  overflow-x: clip;
   line-height: 1.6;
   direction: rtl; /* RTL by default */
 }
@@ -392,7 +394,9 @@ body {
   margin-bottom: 1.5rem;
 }
 
-.search-input {
+/* Higher specificity (two classes) so the mobile .form-input padding shorthand can't
+   override it and let the text run under the search icon. */
+.form-input.search-input {
   padding-right: 2.75rem;
 }
 
@@ -931,7 +935,7 @@ body {
    tab bar full-width, and tighten spacing so everything fits a ~360px screen.
    ========================================================================= */
 @media (max-width: 640px) {
-  html, body { overflow-x: hidden; }
+  html, body { overflow-x: clip; }
 
   .app-container {
     padding: 0.75rem 0.75rem 2.5rem;

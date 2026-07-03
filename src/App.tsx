@@ -439,14 +439,21 @@ export default function App() {
     return list;
   };
 
-  // Open the contacts picker and fetch real Google Contacts.
-  // `target` decides whether a pick fills the add-event form or the quick generator.
-  const openContactsModal = async (target: 'form' | 'quick' = 'form') => {
+  // Persist the chosen contacts/calendar source.
+  const setDataSource = (src: 'device' | 'google') => {
+    const s = { ...settings, dataSource: src };
+    setLocalSettings(s);
+    saveSettings(s);
+  };
+
+  // Open the contacts picker. `target` = form/quick; `sourceOverride` lets a source toggle
+  // re-fetch immediately (React state updates are async).
+  const openContactsModal = async (target: 'form' | 'quick' = 'form', sourceOverride?: 'device' | 'google') => {
     setContactsTarget(target);
     setShowContactsModal(true);
     setContactsError('');
     setContactsSearch('');
-    const source = effectiveSource();
+    const source = sourceOverride || effectiveSource();
     if (source === 'google' && !googleAccessToken) {
       setContactsError('not-connected');
       return;
@@ -470,9 +477,9 @@ export default function App() {
 
   // Fetch Google Calendar events (and contacts, for phone auto-linking) into state so they
   // can be shown directly on the calendar grid. No modal — events appear as importable chips.
-  const syncGoogleCalendar = async () => {
+  const syncGoogleCalendar = async (sourceOverride?: 'device' | 'google') => {
     setCalendarError('');
-    const source = effectiveSource();
+    const source = sourceOverride || effectiveSource();
     if (source === 'google' && !googleAccessToken) {
       setCalendarError('not-connected');
       return;
@@ -1675,13 +1682,31 @@ export default function App() {
               </button>
             </div>
 
-            {/* Google Calendar sync bar */}
+            {/* Calendar sync bar */}
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem' }}>
+              {Capacitor.isNativePlatform() && (
+                <div style={{ display: 'flex', gap: '0.4rem' }}>
+                  <button
+                    type="button"
+                    className={`tone-btn ${effectiveSource() === 'device' ? 'active' : ''}`}
+                    onClick={() => { setDataSource('device'); syncGoogleCalendar('device'); }}
+                  >
+                    מהמכשיר
+                  </button>
+                  <button
+                    type="button"
+                    className={`tone-btn ${effectiveSource() === 'google' ? 'active' : ''}`}
+                    onClick={() => { setDataSource('google'); syncGoogleCalendar('google'); }}
+                  >
+                    מ-Google
+                  </button>
+                </div>
+              )}
               <button
                 type="button"
                 className="btn btn-secondary"
                 style={{ width: 'auto', fontSize: '0.85rem' }}
-                onClick={syncGoogleCalendar}
+                onClick={() => syncGoogleCalendar()}
                 disabled={calendarLoading}
               >
                 {calendarLoading ? (
@@ -1692,7 +1717,7 @@ export default function App() {
                 ) : (
                   <>
                     <CalendarIcon size={14} />
-                    <span>סנכרן אירועים מיומן Google</span>
+                    <span>סנכרן אירועים{effectiveSource() === 'google' ? ' מ-Google' : ' מהמכשיר'}</span>
                   </>
                 )}
               </button>
@@ -2783,8 +2808,29 @@ export default function App() {
 
             <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--secondary)' }}>
               <Users size={20} />
-              <span>ייבוא מאנשי הקשר של Google 📱</span>
+              <span>ייבוא מאנשי קשר 📱</span>
             </h3>
+
+            {Capacitor.isNativePlatform() && (
+              <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+                <button
+                  type="button"
+                  className={`tone-btn ${effectiveSource() === 'device' ? 'active' : ''}`}
+                  style={{ flex: 1 }}
+                  onClick={() => { setDataSource('device'); openContactsModal(contactsTarget, 'device'); }}
+                >
+                  מהמכשיר
+                </button>
+                <button
+                  type="button"
+                  className={`tone-btn ${effectiveSource() === 'google' ? 'active' : ''}`}
+                  style={{ flex: 1 }}
+                  onClick={() => { setDataSource('google'); openContactsModal(contactsTarget, 'google'); }}
+                >
+                  מ-Google
+                </button>
+              </div>
+            )}
 
             {contactsError === 'not-connected' ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
