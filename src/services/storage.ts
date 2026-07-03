@@ -236,6 +236,9 @@ const migratePeople = (parsed: any[]): Person[] => parsed.map(p => {
   const relation = p.relation || 'חבר/ה';
   const useFirstNameOnly = p.useFirstNameOnly !== undefined ? p.useFirstNameOnly : isCloseRelation(relation);
   return {
+    // Preserve every stored field (proxy delivery, sourceEventId, hebrewDay/Month, dateMode, …);
+    // the explicit fields below only normalize/default the core ones.
+    ...p,
     id: p.id || `person-${Date.now()}-${Math.random()}`,
     firstName: firstName || 'ללא שם',
     lastName: lastName || undefined,
