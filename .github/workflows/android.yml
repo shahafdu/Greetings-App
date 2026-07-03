@@ -1,0 +1,57 @@
+name: Build Android APK
+
+# Builds the debug APK on GitHub's servers (no local machine needed) and publishes it to a
+# GitHub Release you can download+install directly on your phone. The committed debug keystore
+# gives every build the same SHA-1 registered in Google Cloud, so Google Sign-In keeps working.
+
+on:
+  push:
+    branches: [main, feature/android-phase2]
+  workflow_dispatch: # allows manual "Run workflow" from the Actions tab
+
+permissions:
+  contents: write # needed to publish the Release
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Install dependencies (runs postinstall patches)
+        run: npm install
+
+      - name: Build web and sync to Android
+        run: |
+          npm run build
+          npx cap sync android
+
+      - name: Build debug APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --console=plain
+
+      - name: Stage APK
+        run: cp android/app/build/outputs/apk/debug/app-debug.apk greetings-debug.apk
+
+      - name: Publish to "android-latest" Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: android-latest
+          name: Latest Android build
+          body: "Debug APK built from ${{ github.sha }} on ${{ github.ref_name }}."
+          prerelease: true
+          files: greetings-debug.apk

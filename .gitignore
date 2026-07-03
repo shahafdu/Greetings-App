@@ -28,3 +28,6 @@ greetings-backup-*.json
 
 # Debug screenshots
 android_screenshot*.png
+
+# Built APKs at repo root
+*.apk
