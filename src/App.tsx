@@ -245,6 +245,27 @@ export default function App() {
     scheduleEventNotifications(people);
   }, [people]);
 
+  // Android hardware/gesture back button: step back WITHIN the app (close an open modal, the
+  // day panel, or return to the events tab) instead of exiting. Only exits from the events tab
+  // with nothing open. Re-subscribes when the relevant state changes so it always acts on it.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let remove: (() => void) | undefined;
+    (async () => {
+      const { App } = await import('@capacitor/app');
+      const handle = await App.addListener('backButton', () => {
+        if (showEventForm) { handleCloseEventForm(); return; }
+        if (showContactsModal) { setShowContactsModal(false); return; }
+        if (showGreetingModal) { setShowGreetingModal(false); return; }
+        if (selectedDay) { setSelectedDay(null); return; }
+        if (activeTab !== 'list') { setActiveTab('list'); return; }
+        App.exitApp();
+      });
+      remove = () => { handle.remove(); };
+    })();
+    return () => { if (remove) remove(); };
+  }, [showEventForm, showContactsModal, showGreetingModal, selectedDay, activeTab]);
+
   // Detect biometric availability, and auto-prompt fingerprint on the lock screen if enabled.
   useEffect(() => {
     isBiometricSupported().then(setBiometricSupported);

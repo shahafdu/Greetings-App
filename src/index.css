@@ -361,11 +361,13 @@ body {
   padding: 1.5rem;
 }
 
-/* Keep the top bar (logo + tabs) pinned while scrolling. */
+/* Keep the top bar (logo + tabs) pinned while scrolling. Opaque (not the translucent
+   glass background) so scrolled content doesn't show through it. */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 100;
+  background: var(--panel-bg-solid);
 }
 
 /* Within the events list, keep the title/count + search bar pinned below the top bar
