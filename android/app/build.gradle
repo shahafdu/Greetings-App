@@ -28,10 +28,19 @@ android {
             keyPassword 'android'
         }
         release {
-            storeFile file('../greetings-debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+            // Prefer the real release key passed by CI (from GitHub Secrets). Falls back to the
+            // committed debug key so local builds and pre-secret CI runs still work unbroken.
+            if (project.hasProperty('RELEASE_STORE_FILE')) {
+                storeFile file(project.property('RELEASE_STORE_FILE'))
+                storePassword project.property('RELEASE_STORE_PASSWORD')
+                keyAlias project.property('RELEASE_KEY_ALIAS')
+                keyPassword project.property('RELEASE_KEY_PASSWORD')
+            } else {
+                storeFile file('../greetings-debug.keystore')
+                storePassword 'android'
+                keyAlias 'androiddebugkey'
+                keyPassword 'android'
+            }
         }
     }
     buildTypes {

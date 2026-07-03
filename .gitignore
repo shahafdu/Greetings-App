@@ -31,3 +31,8 @@ android_screenshot*.png
 
 # Built APKs at repo root
 *.apk
+
+# Release signing material — NEVER commit (kept only as GitHub Secrets)
+greetings-release.keystore
+*.keystore.b64
+cal_bug.png
