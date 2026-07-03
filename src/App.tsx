@@ -1289,22 +1289,22 @@ export default function App() {
       <div className="app-container" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh' }}>
         <form onSubmit={handleUnlock} className="glass-card section-panel" style={{ maxWidth: '380px', width: '100%', textAlign: 'center' }}>
           <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>🔒</div>
-          <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '0.5rem' }}>האפליקציה נעולה</h2>
+          <h2 style={{ fontSize: '1.3rem', fontWeight: 800, marginBottom: '0.5rem' }}>{t('האפליקציה נעולה')}</h2>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.25rem' }}>
-            הזן/י את סיסמת הנעילה כדי לפתוח את הנתונים המוצפנים.
+            {t('הזן/י את סיסמת הנעילה כדי לפתוח את הנתונים המוצפנים.')}
           </p>
           <input
             type="password"
             className="form-input"
             autoFocus
-            placeholder="סיסמה"
+            placeholder={t('סיסמה')}
             value={unlockInput}
             onChange={(e) => setUnlockInput(e.target.value)}
             style={{ marginBottom: '0.75rem', textAlign: 'center' }}
           />
           {unlockError && <p style={{ color: 'var(--danger)', fontSize: '0.85rem', marginBottom: '0.75rem' }}>{unlockError}</p>}
           <button type="submit" className="btn btn-primary" disabled={unlocking || !unlockInput}>
-            {unlocking ? 'פותח...' : 'פתח/י 🔓'}
+            {unlocking ? t('פותח...') : t('פתח/י 🔓')}
           </button>
           {isBiometricEnabled() && (
             <button
@@ -1313,7 +1313,7 @@ export default function App() {
               style={{ marginTop: '0.75rem' }}
               onClick={handleBiometricUnlock}
             >
-              <span>פתח/י עם טביעת אצבע 👆</span>
+              <span>{t('פתח/י עם טביעת אצבע 👆')}</span>
             </button>
           )}
         </form>
@@ -1372,7 +1372,7 @@ export default function App() {
       {/* Update-available banner */}
       {updateInfo?.available && !updateDismissed && (
         <div className="update-banner">
-          <span>🔄 גרסה חדשה זמינה{updateInfo.label ? ` (${updateInfo.label})` : ''}</span>
+          <span>🔄 {t('גרסה חדשה זמינה')}{updateInfo.label ? ` (${updateInfo.label})` : ''}</span>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
               type="button"
@@ -1395,11 +1395,11 @@ export default function App() {
           <div className="alert-content">
             <span className="alert-emoji">🥳</span>
             <div>
-              <h2 className="alert-title">היום יש אירוע!</h2>
+              <h2 className="alert-title">{t('היום יש אירוע!')}</h2>
               <p className="alert-desc">
                 {todaysOccasions.map((p, idx) => (
                   <span key={p.id} style={{ fontWeight: 'bold' }}>
-                    {getOccasionEmoji(p.occasion)} {p.occasion} של {p.firstName} {p.lastName || ''} ({p.relation})!
+                    {getOccasionEmoji(p.occasion)} {t(p.occasion)} {t('של')} {p.firstName} {p.lastName || ''} ({t(p.relation)})!
                     {idx < todaysOccasions.length - 1 ? ', ' : ''}
                   </span>
                 ))}
@@ -1415,7 +1415,7 @@ export default function App() {
                 style={{ width: 'auto' }}
               >
                 <Sparkles size={16} />
-                <span>ברכה ל{p.firstName}</span>
+                <span>{t('ברכה ל')}{p.firstName}</span>
               </button>
             ))}
           </div>
@@ -1441,14 +1441,14 @@ export default function App() {
                 </div>
 
                 {saved.length === 0 && pending.length === 0 && (
-                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>אין אירועים ביום זה.</p>
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>{t('אין אירועים ביום זה.')}</p>
                 )}
 
                 {saved.map(p => (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{p.occasion} · {p.relation}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t(p.occasion)} · {t(p.relation)}</div>
                     </div>
                     <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
                       <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>{t('ברכה')}</button>
@@ -1886,8 +1886,8 @@ export default function App() {
                         type="button"
                         className="search-clear-btn"
                         onClick={() => setSearchQuery('')}
-                        title="נקה חיפוש"
-                        aria-label="נקה חיפוש"
+                        title={t('נקה חיפוש')}
+                        aria-label={t('נקה חיפוש')}
                       >
                         <X size={16} />
                       </button>
@@ -1896,7 +1896,7 @@ export default function App() {
                   <button
                     type="button"
                     className="icon-btn"
-                    title="גלילה למעלה"
+                    title={t('גלילה למעלה')}
                     onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                     style={{ flexShrink: 0 }}
                   >
@@ -1905,7 +1905,7 @@ export default function App() {
                   <button
                     type="button"
                     className="icon-btn"
-                    title="גלילה לתחתית"
+                    title={t('גלילה לתחתית')}
                     onClick={() => window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'smooth' })}
                     style={{ flexShrink: 0 }}
                   >
@@ -1924,19 +1924,19 @@ export default function App() {
                   
                   if (daysLeft === -1) {
                     daysBadgeClass = 'far';
-                    daysBadgeText = 'אירוע עבר (חד פעמי)';
+                    daysBadgeText = t('אירוע עבר (חד פעמי)');
                   } else if (daysLeft === 0) {
                     daysBadgeClass = 'today';
-                    daysBadgeText = 'היום! 🥳';
+                    daysBadgeText = t('היום! 🥳');
                   } else if (daysLeft === 1) {
                     daysBadgeClass = 'soon';
-                    daysBadgeText = 'מחר! ⏳';
+                    daysBadgeText = t('מחר! ⏳');
                   } else if (daysLeft <= 14) {
                     daysBadgeClass = 'soon';
-                    daysBadgeText = `בעוד ${daysLeft} ימים ⏳`;
+                    daysBadgeText = `${t('בעוד')} ${daysLeft} ${t('ימים')} ⏳`;
                   } else {
                     daysBadgeClass = 'far';
-                    daysBadgeText = `בעוד ${daysLeft} ימים`;
+                    daysBadgeText = `${t('בעוד')} ${daysLeft} ${t('ימים')}`;
                   }
 
                   const relationClass = getRelationCategory(person.relation);
@@ -1951,7 +1951,7 @@ export default function App() {
                             {getGenderLabel(person.gender)}
                           </span>
                         </div>
-                        <span className="person-relation">{person.relation}</span>
+                        <span className="person-relation">{t(person.relation)}</span>
                       </div>
 
                       <div className="person-birthday-row">
@@ -1959,13 +1959,13 @@ export default function App() {
                         <span className="numbers-font">{person.eventDate.split('-').reverse().join('/')}</span>
                         <span style={{ opacity: 0.5 }}>|</span>
                         <span style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--primary)' }}>
-                          {person.occasion} {years > 0 ? `(${years})` : ''}
+                          {t(person.occasion)} {years > 0 ? `(${years})` : ''}
                         </span>
                       </div>
 
                       <div className="person-birthday-row" style={{ fontSize: '0.75rem', opacity: 0.85 }}>
                         <span style={{ background: 'rgba(255,255,255,0.03)', padding: '0.1rem 0.4rem', borderRadius: '4px', border: '1px solid var(--panel-border)' }}>
-                          {person.isRecurring ? `מחזורי (${person.recurrence === 'yearly' ? 'שנתי' : person.recurrence === 'monthly' ? 'חודשי' : 'שבועי'})` : 'אירוע חד פעמי'}
+                          {person.isRecurring ? `${t('מחזורי')} (${person.recurrence === 'yearly' ? t('שנתי') : person.recurrence === 'monthly' ? t('חודשי') : t('שבועי')})` : t('אירוע חד פעמי')}
                         </span>
                       </div>
 
@@ -1978,7 +1978,7 @@ export default function App() {
 
                       <div className="person-birthday-row" style={{ fontSize: '0.75rem', opacity: 0.85 }}>
                         <Bell size={12} style={{ color: 'var(--warning)' }} />
-                        <span>התראה: {person.notifyDaysBefore === 0 ? 'ביום האירוע' : person.notifyDaysBefore === 1 ? 'יום לפני' : `${person.notifyDaysBefore} ימים לפני`} בשעה <span className="numbers-font">{person.notifyHour}</span></span>
+                        <span>{t('התראה')}: {person.notifyDaysBefore === 0 ? t('ביום האירוע') : person.notifyDaysBefore === 1 ? t('יום לפני') : `${person.notifyDaysBefore} ${t('ימים לפני')}`} {t('בשעה')} <span className="numbers-font">{person.notifyHour}</span></span>
                       </div>
 
                       {person.notes && (
@@ -1998,16 +1998,16 @@ export default function App() {
                             onClick={() => handleOpenGreeting(person)}
                             className="btn btn-primary"
                             style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem', width: 'auto' }}
-                            title="צור ברכה חכמה"
+                            title={t('צור ברכה חכמה')}
                           >
                             <Sparkles size={14} />
-                            <span>ברכה ✨</span>
+                            <span>{t('ברכה')} ✨</span>
                           </button>
 
                           <button
                             onClick={() => handleStartEdit(person)}
                             className="icon-btn"
-                            title="ערוך איש קשר"
+                            title={t('ערוך איש קשר')}
                           >
                             <Edit size={16} />
                           </button>
@@ -2015,7 +2015,7 @@ export default function App() {
                           <button
                             onClick={() => handleDeletePerson(person.id, person.firstName)}
                             className="icon-btn delete"
-                            title="מחק איש קשר"
+                            title={t('מחק איש קשר')}
                           >
                             <Trash2 size={16} />
                           </button>
@@ -2037,16 +2037,16 @@ export default function App() {
         {activeTab === 'calendar' && (
           <section className="glass-card section-panel calendar-view-container" id="calendar-section">
             <div className="calendar-header">
-              <button onClick={handleNextMonth} className="calendar-nav-btn" title="חודש הבא">
+              <button onClick={handleNextMonth} className="calendar-nav-btn" title={t('חודש הבא')}>
                 <ChevronRight size={20} />
               </button>
               <h2 className="calendar-title-text" id="calendar-month-year">
-                {HEBREW_MONTHS[calendarMonth]} {calendarYear}
+                {t(HEBREW_MONTHS[calendarMonth])} {calendarYear}
                 {settings.showHebrewDates && (
                   <span className="calendar-hebrew-title">{hebrewMonthYearLabel(calendarYear, calendarMonth)}</span>
                 )}
               </h2>
-              <button onClick={handlePrevMonth} className="calendar-nav-btn" title="חודש קודם">
+              <button onClick={handlePrevMonth} className="calendar-nav-btn" title={t('חודש קודם')}>
                 <ChevronLeft size={20} />
               </button>
             </div>
@@ -2063,12 +2063,12 @@ export default function App() {
                 {calendarLoading ? (
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     <div className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', margin: 0 }}></div>
-                    <span>מסנכרן...</span>
+                    <span>{t('מסנכרן...')}</span>
                   </div>
                 ) : (
                   <>
                     <CalendarIcon size={14} />
-                    <span>סנכרן אירועים (מכשיר + Google)</span>
+                    <span>{t('סנכרן אירועים (מכשיר + Google)')}</span>
                   </>
                 )}
               </button>
@@ -2077,7 +2077,7 @@ export default function App() {
                   return (
                     <button type="button" className="btn btn-primary" style={{ width: 'auto', fontSize: '0.8rem', padding: '0.4rem 0.8rem', background: '#4285F4' }} onClick={() => handleGoogleLoginFor('calendar')} disabled={isLoggingIn}>
                       <LogIn size={14} />
-                      <span>{isLoggingIn ? 'מתחבר...' : 'התחבר/י עם Google'}</span>
+                      <span>{isLoggingIn ? t('מתחבר...') : t('התחבר/י עם Google')}</span>
                     </button>
                   );
                 }
@@ -2088,7 +2088,7 @@ export default function App() {
                   const pending = googleEvents.filter(e => !importedSourceIds.has(e.id)).length;
                   return (
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                      {pending > 0 ? `נמצאו ${pending} אירועים — לחץ/י על אירוע מקווקו בלוח כדי לייבא ➕` : 'כל האירועים יובאו 🎉'}
+                      {pending > 0 ? `${t('נמצאו')} ${pending} ${t('אירועים — הקש/י על יום לייבוא')} ➕` : t('כל האירועים יובאו 🎉')}
                     </span>
                   );
                 }
@@ -2098,7 +2098,7 @@ export default function App() {
 
             <div className="calendar-days-grid">
               {WEEKDAYS.map(d => (
-                <div key={d} className="calendar-weekday-label">{d}</div>
+                <div key={d} className="calendar-weekday-label">{t(d)}</div>
               ))}
               {renderCalendarCells()}
             </div>
@@ -2106,19 +2106,19 @@ export default function App() {
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1.5rem', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--accent)' }}></span>
-                <span>בן/בת זוג</span>
+                <span>{t('בן/בת זוג')}</span>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }}></span>
-                <span>משפחה</span>
+                <span>{t('משפחה')}</span>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--secondary)' }}></span>
-                <span>חברים ואחרים</span>
+                <span>{t('חברים ואחרים')}</span>
               </span>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span style={{ width: '10px', height: '10px', borderRadius: '3px', border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)' }}></span>
-                <span>אירוע מהיומן (הקש על היום)</span>
+                <span>{t('אירוע מהיומן (הקש על היום)')}</span>
               </span>
             </div>
           </section>
@@ -2128,15 +2128,15 @@ export default function App() {
           <section className="glass-card section-panel" id="quick-generate-section">
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <Sparkles size={22} style={{ color: 'var(--primary)' }} />
-              <span>מחולל ברכות מהיר (על פי דרישה) ⚡</span>
+              <span>{t('מחולל ברכות מהיר (על פי דרישה) ⚡')}</span>
             </h2>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1.5rem' }}>
-              יצירת ברכה חכמה בעברית ללא רישום במסד הנתונים. מלא/י את הפרטים וקבל/י ברכה מותאמת אישית.
+              {t('יצירת ברכה חכמה ללא שמירה. מלא/י את הפרטים וקבל/י ברכה.')}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem' }}>
-                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: 0 }}>פרטי מקבל הברכה:</h4>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: 0 }}>{t('פרטי מקבל הברכה')}:</h4>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -2150,7 +2150,7 @@ export default function App() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem' }}>שם פרטי</label>
+                  <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('שם פרטי')}</label>
                   <input
                     type="text"
                     className="form-input"
@@ -2161,7 +2161,7 @@ export default function App() {
                   />
                 </div>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem' }}>שם משפחה (אופציונלי)</label>
+                  <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('שם משפחה (אופציונלי)')}</label>
                   <input
                     type="text"
                     className="form-input"
@@ -2175,7 +2175,7 @@ export default function App() {
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.8fr', gap: '0.75rem', alignItems: 'end' }}>
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem' }}>סוג האירוע</label>
+                  <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('סוג האירוע')}</label>
                   <select
                     className="form-select"
                     style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
@@ -2189,7 +2189,7 @@ export default function App() {
                 </div>
                 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem' }}>קשר משפחתי/חברתי</label>
+                  <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('קשר משפחתי/חברתי')}</label>
                   <select
                     className="form-select"
                     style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
@@ -2203,7 +2203,7 @@ export default function App() {
                 </div>
 
                 <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label" style={{ fontSize: '0.75rem' }}>גיל/שנים</label>
+                  <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('גיל/שנים')}</label>
                   <input
                     type="number"
                     className="form-input numbers-font"
@@ -2257,7 +2257,7 @@ export default function App() {
                     onChange={(e) => setQuickUseFirstNameOnly(e.target.checked)}
                     style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
                   />
-                  <span>שם פרטי בלבד בברכה</span>
+                  <span>{t('שם פרטי בלבד בברכה')}</span>
                 </label>
               </div>
 
@@ -2268,12 +2268,12 @@ export default function App() {
                   onChange={(e) => setQuickViaProxy(e.target.checked)}
                   style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
                 />
-                <span>שליחה דרך מישהו אחר (פרוקסי)</span>
+                <span>{t('שליחה דרך מישהו אחר (פרוקסי)')}</span>
               </label>
               {quickViaProxy && (
                 <div style={{ display: 'grid', gridTemplateColumns: '1.3fr 1fr', gap: '0.6rem', alignItems: 'end', padding: '0.6rem', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.72rem' }}>שם מקבל/ת הברכה</label>
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>{t('שם מקבל/ת הברכה')}</label>
                     <input
                       type="text"
                       className="form-input"
@@ -2284,20 +2284,20 @@ export default function App() {
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.72rem' }}>מגדר המקבל/ת</label>
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>{t('מגדר המקבל/ת')}</label>
                     <select
                       className="form-select"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
                       value={quickProxyGender}
                       onChange={(e) => setQuickProxyGender(e.target.value as Person['gender'])}
                     >
-                      <option value="Male">זכר</option>
-                      <option value="Female">נקבה</option>
-                      <option value="Couple">זוג / רבים</option>
+                      <option value="Male">{t('זכר')}</option>
+                      <option value="Female">{t('נקבה')}</option>
+                      <option value="Couple">{t('זוג / רבים')}</option>
                     </select>
                   </div>
                   <div className="form-group" style={{ marginBottom: 0, gridColumn: '1 / -1' }}>
-                    <label className="form-label" style={{ fontSize: '0.72rem' }}>הקשר של בעל/ת האירוע למקבל/ת (אופציונלי)</label>
+                    <label className="form-label" style={{ fontSize: '0.72rem' }}>{t('הקשר של בעל/ת האירוע למקבל/ת (אופציונלי)')}</label>
                     <input
                       type="text"
                       className="form-input"
@@ -2318,7 +2318,7 @@ export default function App() {
                 disabled={isGenerating}
               >
                 <Sparkles size={14} />
-                <span>ייצר ברכה מהירה באמצעות AI ✨</span>
+                <span>{t('ייצר ברכה מהירה באמצעות AI')} ✨</span>
               </button>
             </div>
 
@@ -2327,7 +2327,7 @@ export default function App() {
               {isGenerating ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div className="spinner"></div>
-                  <span>מנסח ברכה בעברית...</span>
+                  <span>{t('מנסח ברכה...')}</span>
                 </div>
               ) : (
                 <textarea
@@ -2348,7 +2348,7 @@ export default function App() {
 
             {/* Control Panel */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>התאמת הברכה מחדש:</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('התאמת הברכה מחדש')}:</h3>
               
               <div className="greeting-options-grid">
                 <div className="form-group">
@@ -2413,14 +2413,14 @@ export default function App() {
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="custom-instruction">הנחיה מיוחדת ל-AI (למשל: "תאחל לו טיול מוצלח")</label>
+                  <label className="form-label" htmlFor="custom-instruction">{t('הנחיה מיוחדת ל-AI')}</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <textarea
                       id="custom-instruction"
                       rows={5} /* Increased rows for better visibility */
                       className="form-textarea"
                       style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }}
-                      placeholder="הוסף בקשה מיוחדת, פרטים ספציפיים שחשוב לכלול או איחולים ייחודיים..."
+                      placeholder={t('הוסף בקשה מיוחדת או פרטים לכלול...')}
                       value={customGreetingDetails}
                       onChange={(e) => setCustomGreetingDetails(e.target.value)}
                     />
@@ -2431,7 +2431,7 @@ export default function App() {
                       onClick={() => handleRegenerateGreeting(greetingTone, customGreetingDetails)}
                       disabled={!quickFirstName.trim() && !customGreetingDetails.trim()}
                     >
-                      עדכן ונסח מחדש באמצעות AI 🪄
+                      {t('עדכן ונסח מחדש באמצעות AI')} 🪄
                     </button>
                   </div>
                 </div>
@@ -2449,7 +2449,7 @@ export default function App() {
                 id="btn-copy-greeting"
               >
                 <Copy size={16} />
-                <span>{copyFeedback ? 'הועתק! 🗸' : 'העתק ברכה'}</span>
+                <span>{copyFeedback ? t('הועתק!') : t('העתק ברכה')}</span>
               </button>
 
               <button
@@ -2461,7 +2461,7 @@ export default function App() {
                 id="btn-send-whatsapp"
               >
                 <Sparkles size={16} />
-                <span>שלח בוואטסאפ</span>
+                <span>{t('שלח בוואטסאפ')}</span>
               </button>
             </div>
           </section>
@@ -2489,17 +2489,17 @@ export default function App() {
             <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Share2 size={18} />
-                <span>שיתוף וגיבוי אירועים</span>
+                <span>{t('שיתוף וגיבוי אירועים')}</span>
               </h3>
               <p className="settings-description" style={{ fontSize: '0.82rem', marginBottom: '1rem', lineHeight: '1.5' }}>
-                ייצוא אירועים כקובץ מוצפן לשיתוף עם מכשיר אחר או אדם אחר (למשל בן/בת זוג). הקוד לפענוח נשלח בנפרד.
+                {t('ייצוא אירועים כקובץ מוצפן לשיתוף עם מכשיר או אדם אחר. הקוד נשלח בנפרד.')}
               </p>
               <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                 <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={openShareModal} disabled={people.length === 0}>
-                  <Share2 size={16} /> <span>שתף/י אירועים</span>
+                  <Share2 size={16} /> <span>{t('שתף/י אירועים')}</span>
                 </button>
                 <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={openImportModal}>
-                  <Import size={16} /> <span>ייבוא אירועים</span>
+                  <Import size={16} /> <span>{t('ייבוא אירועים')}</span>
                 </button>
               </div>
             </div>
@@ -2508,11 +2508,11 @@ export default function App() {
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(138,43,226,0.2)' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <LogIn size={20} style={{ color: 'var(--secondary)' }} />
-                <span>התחברות מאובטחת בחשבון גוגל (Google Login)</span>
+                <span>{t('התחברות מאובטחת עם Google')}</span>
               </h3>
               <p className="settings-description" style={{ fontSize: '0.85rem', marginBottom: '1.25rem' }}>
-                התחברות עם חשבון גוגל מאפשרת לייבא אירועים מיומן Google ואנשי קשר (בהרשאתך בלבד, קריאה בלבד).
-                שים/י לב: ההתחברות אינה מספקת גישה ל-Gemini — ליצירת ברכות AI נדרש מפתח API נפרד (ראה/י למטה).
+                {t('התחברות עם Google מאפשרת לייבא אירועים ואנשי קשר (קריאה בלבד, בהרשאתך).')}
+                {t('שים/י לב: ההתחברות אינה מספקת גישה ל-AI — ליצירת ברכות נדרש מפתח נפרד (למטה).')}
               </p>
 
               {settings.useGoogleAuth ? (
@@ -2520,7 +2520,7 @@ export default function App() {
                   <div>
                     <div style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
                       <CheckCircle size={16} />
-                      <span>מחובר בהצלחה באמצעות Google</span>
+                      <span>{t('מחובר בהצלחה עם Google')}</span>
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
                       שם: {settings.googleUserName} ({settings.googleUserEmail})
@@ -2532,7 +2532,7 @@ export default function App() {
                     style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
                   >
                     <LogOut size={14} />
-                    <span>התנתק</span>
+                    <span>{t('התנתק')}</span>
                   </button>
                 </div>
               ) : (
@@ -2556,7 +2556,7 @@ export default function App() {
                         <path fill="#fff" d="M3.95 10.71a5.4 5.4 0 0 1 0-3.42V4.99H.95a9 9 0 0 0 0 8.02l3-2.3z"/>
                         <path fill="#fff" d="M9 3.58c1.32 0 2.5.45 3.44 1.35L15 2.4A9 9 0 0 0 .95 4.99l3 2.3C4.66 5.17 6.65 3.58 9 3.58z"/>
                       </svg>
-                      <span>התחברות מהירה עם Google</span>
+                      <span>{t('התחברות מהירה עם Google')}</span>
                     </div>
                   )}
                 </button>
@@ -2567,20 +2567,20 @@ export default function App() {
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(0, 230, 118, 0.15)' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <span>🔒</span>
-                <span>נעילת אפליקציה (הצפנת נתונים)</span>
+                <span>{t('נעילת אפליקציה (הצפנת נתונים)')}</span>
               </h3>
               <p className="settings-description" style={{ fontSize: '0.85rem', marginBottom: '1rem', lineHeight: '1.5' }}>
-                הצפנת כל הנתונים במכשיר (אנשי קשר, מספרי טלפון ומפתחות API) באמצעות סיסמה. בכל פתיחה של האפליקציה תידרש/י להזין אותה.
+                {t('הצפנת כל הנתונים במכשיר בעזרת סיסמה. בכל פתיחה תידרש/י להזין אותה.')}
               </p>
 
               {lockEnabled ? (
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
                   <span style={{ color: 'var(--success)', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                     <CheckCircle size={16} />
-                    הנעילה פעילה — הנתונים מוצפנים.
+                    {t('הנעילה פעילה — הנתונים מוצפנים.')}
                   </span>
                   <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={handleDisableLock}>
-                    בטל/י נעילה
+                    {t('בטל/י נעילה')}
                   </button>
                 </div>
               ) : (
@@ -2588,14 +2588,14 @@ export default function App() {
                   <input
                     type="password"
                     className="form-input"
-                    placeholder="סיסמת נעילה חדשה"
+                    placeholder={t('סיסמת נעילה חדשה')}
                     value={newPassphrase}
                     onChange={(e) => { setNewPassphrase(e.target.value); setLockSetupError(''); }}
                   />
                   <input
                     type="password"
                     className="form-input"
-                    placeholder="אישור סיסמה"
+                    placeholder={t('אישור סיסמה')}
                     value={confirmPassphrase}
                     onChange={(e) => { setConfirmPassphrase(e.target.value); setLockSetupError(''); }}
                   />
@@ -2608,14 +2608,14 @@ export default function App() {
                         onChange={(e) => setUseBiometricChecked(e.target.checked)}
                         style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                       />
-                      <span>אפשר/י פתיחה גם בטביעת אצבע 👆</span>
+                      <span>{t('אפשר/י פתיחה גם בטביעת אצבע 👆')}</span>
                     </label>
                   )}
                   <p style={{ fontSize: '0.72rem', color: 'var(--warning)', margin: 0, lineHeight: '1.4' }}>
-                    ⚠️ שמור/י את הסיסמה במקום בטוח — אם תישכח, לא ניתן יהיה לשחזר את הנתונים המוצפנים.
+                    {t('⚠️ שמור/י את הסיסמה — אם תישכח, לא ניתן לשחזר את הנתונים המוצפנים.')}
                   </p>
                   <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={handleEnableLock} disabled={!newPassphrase || !confirmPassphrase}>
-                    הפעל/י נעילה
+                    {t('הפעל/י נעילה')}
                   </button>
                 </div>
               )}
@@ -2623,7 +2623,7 @@ export default function App() {
 
             <form onSubmit={handleSaveSettings}>
               <div className="form-group" style={{ paddingBottom: '1.25rem', marginBottom: '1.25rem', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-                <label className="form-label">המגדר שלך (כותב/ת הברכה) — חשוב לדקדוק העברי</label>
+                <label className="form-label">{t('המגדר שלך (כותב/ת הברכה)')}</label>
                 <div className="gender-radio-group">
                   <label className="gender-radio-label">
                     <input
@@ -2633,7 +2633,7 @@ export default function App() {
                       checked={(settings.senderGender || 'Male') === 'Male'}
                       onChange={() => setLocalSettings({ ...settings, senderGender: 'Male' })}
                     />
-                    <span>זכר (מאחל)</span>
+                    <span>{t('זכר (מאחל)')}</span>
                   </label>
                   <label className="gender-radio-label">
                     <input
@@ -2643,23 +2643,23 @@ export default function App() {
                       checked={settings.senderGender === 'Female'}
                       onChange={() => setLocalSettings({ ...settings, senderGender: 'Female' })}
                     />
-                    <span>נקבה (מאחלת)</span>
+                    <span>{t('נקבה (מאחלת)')}</span>
                   </label>
                 </div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                  הברכות נכתבות בגוף ראשון — הגדרה זו קובעת אם ייכתב "מאחל" או "מאחלת".
+                  {t('הברכות נכתבות בגוף ראשון — קובע אם ייכתב "מאחל" או "מאחלת".')}
                 </p>
 
-                <label className="form-label" style={{ marginTop: '0.9rem' }}>השם שלך (לחתימת הברכה)</label>
+                <label className="form-label" style={{ marginTop: '0.9rem' }}>{t('השם שלך (לחתימת הברכה)')}</label>
                 <input
                   type="text"
                   className="form-input"
-                  placeholder="למשל: דנה"
+                  placeholder={t('למשל: דנה')}
                   value={settings.senderName || ''}
                   onChange={(e) => setLocalSettings({ ...settings, senderName: e.target.value })}
                 />
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                  אם תזין/י שם, הברכות ייחתמו בו (למשל: "באהבה, דנה"). השאר/י ריק לברכה ללא חתימה.
+                  {t('אם תזין/י שם, הברכות ייחתמו בו. השאר/י ריק לברכה ללא חתימה.')}
                 </p>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', marginTop: '1rem' }}>
@@ -2668,35 +2668,35 @@ export default function App() {
                     checked={!!settings.showHebrewDates}
                     onChange={(e) => setLocalSettings({ ...settings, showHebrewDates: e.target.checked })}
                   />
-                  <span style={{ fontWeight: 700 }}>🕎 הצג תאריכים עבריים</span>
+                  <span style={{ fontWeight: 700 }}>{t('🕎 הצג תאריכים עבריים')}</span>
                 </label>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                  מציג את התאריך העברי לצד הלועזי בלוח השנה ובטופס האירוע, עם אפשרות לחשב תזכורות לפי התאריך העברי לכל אירוע.
+                  {t('מציג תאריך עברי לצד הלועזי בלוח ובטופס, עם אפשרות לחשב תזכורות לפי התאריך העברי לכל אירוע.')}
                 </p>
               </div>
 
               <div className="form-group">
-                <label className="form-label" htmlFor="select-ai-provider">ספק הבינה המלאכותית (AI)</label>
+                <label className="form-label" htmlFor="select-ai-provider">{t('ספק הבינה המלאכותית (AI)')}</label>
                 <select
                   id="select-ai-provider"
                   className="form-select"
                   value={settings.aiProvider || 'gemini'}
                   onChange={(e) => { setLocalSettings({ ...settings, aiProvider: e.target.value as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
                 >
-                  {AI_PROXY_URL && <option value="proxy">מובנה (ללא מפתח)</option>}
+                  {AI_PROXY_URL && <option value="proxy">{t('מובנה (ללא מפתח)')}</option>}
                   <option value="gemini">Google Gemini</option>
-                  <option value="groq">Groq (חינמי)</option>
-                  <option value="openrouter">OpenRouter (חינמי)</option>
+                  <option value="groq">{t('Groq (חינמי)')}</option>
+                  <option value="openrouter">{t('OpenRouter (חינמי)')}</option>
                 </select>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                  לכל ספק מפתח API נפרד. ללא מפתח — האפליקציה משתמשת בברכות תבנית מובנות (חינם, ללא AI).
+                  {t('לכל ספק מפתח נפרד. ללא מפתח — נעשה שימוש בברכות תבנית מובנות (חינם, ללא AI).')}
                 </p>
               </div>
 
               {(settings.aiProvider || 'gemini') === 'gemini' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="input-api-key"><span>מפתח API של Google Gemini</span></label>
+                    <label className="form-label" htmlFor="input-api-key"><span>{t('מפתח API של Google Gemini')}</span></label>
                     <div className="api-key-input-container">
                       <input
                         id="input-api-key"
@@ -2714,7 +2714,7 @@ export default function App() {
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.</p>
                   </div>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="select-gemini-model">מודל Gemini</label>
+                    <label className="form-label" htmlFor="select-gemini-model">{t('מודל Gemini')}</label>
                     <select id="select-gemini-model" className="form-select" value={settings.geminiModel || DEFAULT_GEMINI_MODEL} onChange={(e) => { setLocalSettings({ ...settings, geminiModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {GEMINI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
@@ -2726,7 +2726,7 @@ export default function App() {
               {settings.aiProvider === 'groq' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="input-groq-key"><span>מפתח API של Groq</span></label>
+                    <label className="form-label" htmlFor="input-groq-key"><span>{t('מפתח API של Groq')}</span></label>
                     <div className="api-key-input-container">
                       <input
                         id="input-groq-key"
@@ -2744,7 +2744,7 @@ export default function App() {
                     <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.</p>
                   </div>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="select-groq-model">מודל Groq</label>
+                    <label className="form-label" htmlFor="select-groq-model">{t('מודל Groq')}</label>
                     <select id="select-groq-model" className="form-select" value={settings.groqModel || DEFAULT_GROQ_MODEL} onChange={(e) => { setLocalSettings({ ...settings, groqModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {GROQ_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
@@ -2756,7 +2756,7 @@ export default function App() {
               {settings.aiProvider === 'openrouter' && (
                 <>
                   <div className="form-group">
-                    <label className="form-label" htmlFor="input-or-key"><span>מפתח API של OpenRouter</span></label>
+                    <label className="form-label" htmlFor="input-or-key"><span>{t('מפתח API של OpenRouter')}</span></label>
                     <div className="api-key-input-container">
                       <input
                         id="input-or-key"
@@ -2815,7 +2815,7 @@ export default function App() {
               {keyTestStatus === 'valid' && (
                 <div style={{ marginTop: '1rem', color: 'var(--success)', fontWeight: 'bold', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                   <CheckCircle size={16} />
-                  <span>המפתח תקין ופעיל! יצירת ברכות AI מוכנה לשימוש.</span>
+                  <span>{t('המפתח תקין ופעיל! יצירת ברכות AI מוכנה.')}</span>
                 </div>
               )}
               {keyTestStatus === 'invalid' && (
@@ -2826,13 +2826,13 @@ export default function App() {
 
               {saveStatus === 'success' && (
                 <div style={{ marginTop: '1rem', color: 'var(--success)', fontWeight: 'bold', fontSize: '0.9rem', textAlign: 'center' }}>
-                  ההגדרות נשמרו בהצלחה!
+                  {t('ההגדרות נשמרו!')}
                 </div>
               )}
             </form>
 
             <div style={{ marginTop: '3rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>איך משיגים מפתח API בחינם?</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>{t('איך משיגים מפתח API בחינם?')}</h3>
               {(settings.aiProvider || 'gemini') === 'gemini' && (
                 <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   <li>כנס לאתר <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Google AI Studio</a> והתחבר עם חשבון הגוגל שלך.</li>
@@ -2865,7 +2865,7 @@ export default function App() {
           <div className="glass-card modal-content" style={{ maxWidth: '480px' }} onClick={ev => ev.stopPropagation()}>
             <button type="button" className="icon-btn modal-close-btn" onClick={() => setShowShareModal(false)} title="סגור"><X size={20} /></button>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Share2 size={20} /> <span>שיתוף אירועים</span>
+              <Share2 size={20} /> <span>{t('שיתוף אירועים')}</span>
             </h3>
 
             {!shareCode ? (
@@ -2874,7 +2874,7 @@ export default function App() {
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>נבחרו {shareSelectedIds.size} מתוך {people.length}</span>
                   <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
                     onClick={() => setShareSelectedIds(shareSelectedIds.size === people.length ? new Set() : new Set(people.map(p => p.id)))}>
-                    {shareSelectedIds.size === people.length ? 'נקה הכל' : 'בחר/י הכל'}
+                    {shareSelectedIds.size === people.length ? t('נקה הכל') : t('בחר/י הכל')}
                   </button>
                 </div>
                 <div style={{ maxHeight: '45vh', overflowY: 'auto', margin: '0.5rem 0 1rem' }}>
@@ -2882,33 +2882,33 @@ export default function App() {
                     <label key={p.id} style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', cursor: 'pointer' }}>
                       <input type="checkbox" checked={shareSelectedIds.has(p.id)} onChange={() => toggleShareId(p.id)} />
                       <span style={{ fontWeight: 600 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</span>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginInlineStart: 'auto' }}>{p.occasion}</span>
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginInlineStart: 'auto' }}>{t(p.occasion)}</span>
                     </label>
                   ))}
                 </div>
                 <button type="button" className="btn btn-primary" onClick={handleGenerateShare} disabled={shareSelectedIds.size === 0}>
-                  צור קובץ מוצפן ({shareSelectedIds.size})
+                  {t('צור קובץ מוצפן')} ({shareSelectedIds.size})
                 </button>
               </>
             ) : (
               <>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.5' }}>
-                  הקובץ מוכן. שתף/י אותו, ושלח/י את הקוד <strong>בנפרד</strong> (לא באותה הודעה):
+                  {t('הקובץ מוכן. שתף/י אותו, ושלח/י את הקוד')} <strong>{t('בנפרד')}</strong>:
                 </p>
                 <div style={{ textAlign: 'center', fontSize: '1.8rem', fontWeight: 800, letterSpacing: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', fontFamily: 'var(--font-numbers)' }}>
                   {shareCode}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: '140px' }} onClick={handleShareAsText}>
-                    <Share2 size={16} /> <span>{Capacitor.isNativePlatform() ? 'שתף/י כטקסט (וואטסאפ)' : 'העתק/י טקסט מוצפן'}</span>
+                    <Share2 size={16} /> <span>{Capacitor.isNativePlatform() ? t('שתף/י כטקסט (וואטסאפ)') : t('העתק/י טקסט מוצפן')}</span>
                   </button>
                   <button type="button" className="btn btn-secondary" style={{ flex: 1, minWidth: '140px' }} onClick={handleSendShareFile}>
-                    <FileText size={16} /> <span>{Capacitor.isNativePlatform() ? 'שתף/י כקובץ (מייל)' : 'הורד/י קובץ'}</span>
+                    <FileText size={16} /> <span>{Capacitor.isNativePlatform() ? t('שתף/י כקובץ (מייל)') : t('הורד/י קובץ')}</span>
                   </button>
-                  <button type="button" className="icon-btn" title="העתק קוד" onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
+                  <button type="button" className="icon-btn" title={t('העתק קוד')} onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
                 </div>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
-                  💡 לוואטסאפ — עדיף "כטקסט" (נשלח כהודעה, המקבל/ת מדביק/ה בייבוא). למייל — "כקובץ".
+                  {t('💡 לוואטסאפ עדיף "כטקסט"; למייל — "כקובץ".')}
                 </p>
               </>
             )}
@@ -2922,18 +2922,18 @@ export default function App() {
           <div className="glass-card modal-content" style={{ maxWidth: '480px' }} onClick={ev => ev.stopPropagation()}>
             <button type="button" className="icon-btn modal-close-btn" onClick={() => setShowImportModal(false)} title="סגור"><X size={20} /></button>
             <h3 style={{ fontSize: '1.2rem', fontWeight: 800, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Import size={20} /> <span>ייבוא אירועים</span>
+              <Import size={20} /> <span>{t('ייבוא אירועים')}</span>
             </h3>
 
             {importDone > 0 ? (
               <div style={{ textAlign: 'center', padding: '1rem' }}>
-                <p style={{ fontSize: '1rem', color: 'var(--success)', fontWeight: 700, marginBottom: '1rem' }}>יובאו {importDone} אירועים חדשים ✓</p>
-                <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowImportModal(false)}>סגור</button>
+                <p style={{ fontSize: '1rem', color: 'var(--success)', fontWeight: 700, marginBottom: '1rem' }}>{t('יובאו')} {importDone} {t('אירועים חדשים')} ✓</p>
+                <button type="button" className="btn btn-primary" style={{ width: 'auto' }} onClick={() => setShowImportModal(false)}>{t('סגור')}</button>
               </div>
             ) : (
               <>
                 <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.6rem' }}>
-                  <Import size={16} /> <span>{importFileName || 'בחר/י קובץ שיתוף (מייל)'}</span>
+                  <Import size={16} /> <span>{importFileName || t('בחר/י קובץ שיתוף (מייל)')}</span>
                   <input type="file" style={{ display: 'none' }} onChange={handleImportFilePick} />
                 </label>
 
@@ -2941,15 +2941,15 @@ export default function App() {
                 <textarea
                   className="form-textarea"
                   rows={3}
-                  placeholder="הדבק/י כאן את הטקסט המוצפן (למשל מוואטסאפ)"
+                  placeholder={t('הדבק/י כאן את הטקסט המוצפן')}
                   value={importFileName ? '' : importBlob}
                   onChange={(e) => { setImportBlob(e.target.value.trim()); setImportFileName(''); setImportPreview(null); setImportError(''); }}
                   style={{ marginBottom: '0.75rem' }}
                 />
 
                 <div className="form-group">
-                  <label className="form-label" htmlFor="import-code">קוד הפענוח</label>
-                  <input id="import-code" type="text" className="form-input numbers-font" placeholder="6 תווים" value={importCode}
+                  <label className="form-label" htmlFor="import-code">{t('קוד הפענוח')}</label>
+                  <input id="import-code" type="text" className="form-input numbers-font" placeholder={t('6 תווים')} value={importCode}
                     onChange={(e) => setImportCode(e.target.value)} style={{ letterSpacing: '3px', textAlign: 'center' }} />
                 </div>
 
@@ -2957,7 +2957,7 @@ export default function App() {
 
                 {importPreview ? (
                   <>
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.5rem 0' }}>נמצאו {importPreview.length} אירועים:</p>
+                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.5rem 0' }}>{t('נמצאו')} {importPreview.length} {t('אירועים')}:</p>
                     <div style={{ maxHeight: '35vh', overflowY: 'auto', marginBottom: '1rem' }}>
                       {importPreview.map((ev, i) => (
                         <div key={i} style={{ padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
@@ -2965,11 +2965,11 @@ export default function App() {
                         </div>
                       ))}
                     </div>
-                    <button type="button" className="btn btn-primary" onClick={handleConfirmImport}>ייבא/י ומזג/י</button>
+                    <button type="button" className="btn btn-primary" onClick={handleConfirmImport}>{t('ייבא/י ומזג/י')}</button>
                   </>
                 ) : (
                   <button type="button" className="btn btn-primary" onClick={handleDecryptImport} disabled={!importBlob || !importCode.trim()}>
-                    פענח/י ותצוגה מקדימה
+                    {t('פענח/י ותצוגה מקדימה')}
                   </button>
                 )}
               </>
@@ -3008,11 +3008,11 @@ export default function App() {
             {/* Quick Mode Input Fields (Feature 2) */}
             {isQuickMode && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.25rem', padding: '1rem', background: 'rgba(255, 255, 255, 0.02)', borderRadius: '8px', border: '1px solid var(--panel-border)' }}>
-                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: '0.25rem' }}>פרטי מקבל הברכה המהירה:</h4>
+                <h4 style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--secondary)', marginBottom: '0.25rem' }}>{t('פרטי מקבל הברכה')}:</h4>
                 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>שם פרטי</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('שם פרטי')}</label>
                     <input
                       type="text"
                       className="form-input"
@@ -3023,7 +3023,7 @@ export default function App() {
                     />
                   </div>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>שם משפחה (אופציונלי)</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('שם משפחה (אופציונלי)')}</label>
                     <input
                       type="text"
                       className="form-input"
@@ -3037,7 +3037,7 @@ export default function App() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr 0.8fr', gap: '0.75rem', alignItems: 'end' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>סוג האירוע</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('סוג האירוע')}</label>
                     <select
                       className="form-select"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
@@ -3051,7 +3051,7 @@ export default function App() {
                   </div>
                   
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>קשר משפחתי/חברתי</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('קשר משפחתי/חברתי')}</label>
                     <select
                       className="form-select"
                       style={{ padding: '0.4rem 0.75rem', fontSize: '0.85rem' }}
@@ -3065,7 +3065,7 @@ export default function App() {
                   </div>
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
-                    <label className="form-label" style={{ fontSize: '0.75rem' }}>גיל/שנים</label>
+                    <label className="form-label" style={{ fontSize: '0.75rem' }}>{t('גיל/שנים')}</label>
                     <input
                       type="number"
                       className="form-input numbers-font"
@@ -3119,7 +3119,7 @@ export default function App() {
                       onChange={(e) => setQuickUseFirstNameOnly(e.target.checked)}
                       style={{ width: '15px', height: '15px', accentColor: 'var(--primary)' }}
                     />
-                    <span>שם פרטי בלבד בברכה</span>
+                    <span>{t('שם פרטי בלבד בברכה')}</span>
                   </label>
                 </div>
 
@@ -3131,7 +3131,7 @@ export default function App() {
                   disabled={isGenerating}
                 >
                   <Sparkles size={14} />
-                  <span>ייצר ברכה מהירה באמצעות AI ✨</span>
+                  <span>{t('ייצר ברכה מהירה באמצעות AI')} ✨</span>
                 </button>
               </div>
             )}
@@ -3141,7 +3141,7 @@ export default function App() {
               {isGenerating ? (
                 <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
                   <div className="spinner"></div>
-                  <span>מנסח ברכה בעברית...</span>
+                  <span>{t('מנסח ברכה...')}</span>
                 </div>
               ) : (
                 <textarea
@@ -3162,7 +3162,7 @@ export default function App() {
 
             {/* Control Panel */}
             <div style={{ borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem' }}>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>התאמת הברכה מחדש:</h3>
+              <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem' }}>{t('התאמת הברכה מחדש')}:</h3>
               
               <div className="greeting-options-grid">
                 <div className="form-group">
@@ -3228,14 +3228,14 @@ export default function App() {
 
                 {/* Feature 6: Larger text window for custom request (Textarea) */}
                 <div className="form-group">
-                  <label className="form-label" htmlFor="custom-instruction">הנחיה מיוחדת ל-AI (למשל: "תאחל לו טיול מוצלח")</label>
+                  <label className="form-label" htmlFor="custom-instruction">{t('הנחיה מיוחדת ל-AI')}</label>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                     <textarea
                       id="custom-instruction"
                       rows={3}
                       className="form-textarea"
                       style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }}
-                      placeholder="הוסף בקשה מיוחדת, פרטים ספציפיים שחשוב לכלול או איחולים ייחודיים..."
+                      placeholder={t('הוסף בקשה מיוחדת או פרטים לכלול...')}
                       value={customGreetingDetails}
                       onChange={(e) => setCustomGreetingDetails(e.target.value)}
                     />
@@ -3246,7 +3246,7 @@ export default function App() {
                       onClick={() => handleRegenerateGreeting(greetingTone, customGreetingDetails)}
                       disabled={!greetingText && isQuickMode}
                     >
-                      עדכן ונסח מחדש באמצעות AI 🪄
+                      {t('עדכן ונסח מחדש באמצעות AI')} 🪄
                     </button>
                   </div>
                 </div>
@@ -3264,7 +3264,7 @@ export default function App() {
                 id="btn-copy-greeting"
               >
                 <Copy size={16} />
-                <span>{copyFeedback ? 'הועתק! 🗸' : 'העתק ברכה'}</span>
+                <span>{copyFeedback ? t('הועתק!') : t('העתק ברכה')}</span>
               </button>
 
               <button
@@ -3276,13 +3276,13 @@ export default function App() {
                 id="btn-send-whatsapp"
               >
                 <Sparkles size={16} />
-                <span>שלח בוואטסאפ</span>
+                <span>{t('שלח בוואטסאפ')}</span>
               </button>
             </div>
 
             {!isQuickMode && greetingPerson && !greetingPerson.phone && (
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.75rem' }}>
-                טיפ: הוסף מספר טלפון לאיש הקשר כדי לפתוח את שיחת הוואטסאפ איתו ישירות.
+                {t('טיפ: הוסף/י מספר טלפון כדי לפתוח שיחת וואטסאפ ישירות.')}
               </p>
             )}
           </div>
@@ -3309,7 +3309,7 @@ export default function App() {
             {contactsError === 'not-connected' ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '1.25rem', lineHeight: '1.5' }}>
-                  כדי לייבא אנשי קשר אמיתיים, התחבר/י לחשבון Google שלך.
+                  {t('כדי לייבא אנשי קשר, התחבר/י לחשבון Google.')}
                 </p>
                 <button
                   type="button"
@@ -3319,22 +3319,22 @@ export default function App() {
                   disabled={isLoggingIn}
                 >
                   <LogIn size={16} />
-                  <span>{isLoggingIn ? 'מתחבר...' : 'התחבר/י עם Google'}</span>
+                  <span>{isLoggingIn ? t('מתחבר...') : t('התחבר/י עם Google')}</span>
                 </button>
               </div>
             ) : contactsLoading ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '2rem', gap: '0.75rem' }}>
                 <div className="spinner"></div>
-                <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>טוען אנשי קשר מ-Google...</span>
+                <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>{t('טוען אנשי קשר...')}</span>
               </div>
             ) : contactsError ? (
               <div style={{ textAlign: 'center', padding: '1.5rem 1rem' }}>
                 <p style={{ fontSize: '0.9rem', color: 'var(--danger, #ff5c5c)', marginBottom: '1rem', lineHeight: '1.5' }}>{contactsError}</p>
-                <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => openContactsModal(contactsTarget)}>נסה/י שוב</button>
+                <button type="button" className="btn btn-secondary" style={{ width: 'auto' }} onClick={() => openContactsModal(contactsTarget)}>{t('נסה/י שוב')}</button>
               </div>
             ) : googleContacts.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-                לא נמצאו אנשי קשר בחשבון Google שלך.
+                {t('לא נמצאו אנשי קשר.')}
               </div>
             ) : (() => {
               const q = contactsSearch.toLowerCase().trim();
@@ -3347,13 +3347,13 @@ export default function App() {
               return (
               <>
                 <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.4' }}>
-                  בחר/י איש קשר כדי למלא אוטומטית את פרטי האירוע. אם קיים תאריך יום הולדת ב-Google, הוא ימולא גם כן.
+                  {t('בחר/י איש קשר כדי למלא את פרטי האירוע אוטומטית.')}
                 </p>
                 <div className="search-container" style={{ marginBottom: '0.85rem' }}>
                   <input
                     type="text"
                     className="form-input search-input"
-                    placeholder="חיפוש לפי שם או טלפון..."
+                    placeholder={t('חיפוש לפי שם או טלפון...')}
                     value={contactsSearch}
                     onChange={(e) => setContactsSearch(e.target.value)}
                     autoFocus
@@ -3363,7 +3363,7 @@ export default function App() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', maxHeight: '300px', overflowY: 'auto', paddingLeft: '5px' }}>
                   {filtered.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '1.5rem', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      אין תוצאות עבור "{contactsSearch}"
+                      {t('אין תוצאות עבור')} "{contactsSearch}"
                     </div>
                   ) : filtered.map((c) => (
                     <div
