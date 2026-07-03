@@ -397,9 +397,35 @@ body {
 }
 
 /* Higher specificity (two classes) so the mobile .form-input padding shorthand can't
-   override it and let the text run under the search icon. */
+   override it and let the text run under the search icon (right) or clear button (left). */
 .form-input.search-input {
   padding-right: 2.75rem;
+  padding-left: 2.25rem;
+}
+
+/* Clear-search (x) button on the left of the search box. */
+.search-clear-btn {
+  position: absolute;
+  left: 0.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: var(--transition-smooth);
+}
+
+.search-clear-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text-primary);
 }
 
 .search-icon {

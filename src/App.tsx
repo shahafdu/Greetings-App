@@ -928,6 +928,7 @@ export default function App() {
     setFormIsRecurring(recurring);
     setFormRecurrence(recurring ? 'yearly' : 'once');
     setPendingImportEventId(event.id);
+    setSelectedDay(null); // close the day window; the form modal takes over
     setShowEventForm(true);
   };
 
@@ -1229,6 +1230,60 @@ export default function App() {
 
       {/* Tab Contents */}
       <main>
+        {/* Day window: everything on the tapped day — pick synced events to add, or start a new one */}
+        {selectedDay && (() => {
+          const { saved, pending } = getEventsForDay(selectedDay.year, selectedDay.month, selectedDay.day);
+          const dateStr = new Date(selectedDay.year, selectedDay.month, selectedDay.day)
+            .toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+          const isoDate = `${selectedDay.year}-${String(selectedDay.month + 1).padStart(2, '0')}-${String(selectedDay.day).padStart(2, '0')}`;
+          return (
+            <div className="modal-overlay" style={{ zIndex: 3500 }} onClick={() => setSelectedDay(null)}>
+              <div className="glass-card modal-content" style={{ maxWidth: '460px' }} onClick={ev => ev.stopPropagation()}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontSize: '1.05rem', fontWeight: 800 }}>{dateStr}</h3>
+                  <button type="button" className="icon-btn" onClick={() => setSelectedDay(null)} title="סגור" style={{ flexShrink: 0 }}>
+                    <X size={18} />
+                  </button>
+                </div>
+
+                {saved.length === 0 && pending.length === 0 && (
+                  <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>אין אירועים ביום זה.</p>
+                )}
+
+                {saved.map(p => (
+                  <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{p.occasion} · {p.relation}</div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
+                      <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>ברכה</button>
+                      <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleStartEdit(p)}>עריכה</button>
+                    </div>
+                  </div>
+                ))}
+
+                {pending.length > 0 && (
+                  <p style={{ fontSize: '0.8rem', color: 'var(--secondary)', margin: '0.85rem 0 0.35rem' }}>אירועים מהיומן — בחר/י מה להוסיף:</p>
+                )}
+                {pending.map(e => (
+                  <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--secondary)' }}>לא נוסף עדיין</div>
+                    </div>
+                    <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem', flexShrink: 0 }} onClick={() => handleReviewImportEvent(e)}>➕ הוסף</button>
+                  </div>
+                ))}
+
+                <button type="button" className="btn btn-secondary" style={{ marginTop: '0.85rem', width: '100%' }} onClick={() => { setSelectedDay(null); resetForm(); setFormDate(isoDate); setShowEventForm(true); }}>
+                  <Plus size={14} /> <span>אירוע חדש ביום זה</span>
+                </button>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Add/Edit event — modal (opens from the events list OR the calendar) */}
         {showEventForm && (
             <div className="modal-overlay" style={{ zIndex: 4000 }}>
@@ -1581,6 +1636,17 @@ export default function App() {
                       id="search-contacts-input"
                     />
                     <Search className="search-icon" size={18} />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        className="search-clear-btn"
+                        onClick={() => setSearchQuery('')}
+                        title="נקה חיפוש"
+                        aria-label="נקה חיפוש"
+                      >
+                        <X size={16} />
+                      </button>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1788,55 +1854,6 @@ export default function App() {
               ))}
               {renderCalendarCells()}
             </div>
-
-            {/* Selected-day detail: full event names + actions (tap a day to open) */}
-            {selectedDay && (() => {
-              const { saved, pending } = getEventsForDay(selectedDay.year, selectedDay.month, selectedDay.day);
-              const dateStr = new Date(selectedDay.year, selectedDay.month, selectedDay.day)
-                .toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
-              const isoDate = `${selectedDay.year}-${String(selectedDay.month + 1).padStart(2, '0')}-${String(selectedDay.day).padStart(2, '0')}`;
-              return (
-                <div className="glass-card" style={{ padding: '1rem', margin: '1rem 0', border: '1px solid var(--panel-border-hover)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
-                    <h3 style={{ fontSize: '1rem', fontWeight: 800 }}>{dateStr}</h3>
-                    <button type="button" className="icon-btn" onClick={() => setSelectedDay(null)} title="סגור" style={{ flexShrink: 0 }}>
-                      <X size={16} />
-                    </button>
-                  </div>
-
-                  {saved.length === 0 && pending.length === 0 && (
-                    <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>אין אירועים ביום זה.</p>
-                  )}
-
-                  {saved.map(p => (
-                    <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{p.occasion} · {p.relation}</div>
-                      </div>
-                      <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
-                        <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>ברכה</button>
-                        <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleStartEdit(p)}>עריכה</button>
-                      </div>
-                    </div>
-                  ))}
-
-                  {pending.map(e => (
-                    <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.title}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--secondary)' }}>אירוע מהיומן — לא נוסף עדיין</div>
-                      </div>
-                      <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem', flexShrink: 0 }} onClick={() => handleReviewImportEvent(e)}>➕ הוסף</button>
-                    </div>
-                  ))}
-
-                  <button type="button" className="btn btn-secondary" style={{ marginTop: '0.85rem' }} onClick={() => { resetForm(); setFormDate(isoDate); setShowEventForm(true); }}>
-                    <Plus size={14} /> <span>הוסף אירוע ביום זה</span>
-                  </button>
-                </div>
-              );
-            })()}
 
             <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1.5rem', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>

@@ -17,9 +17,16 @@ android {
         }
     }
     signingConfigs {
-        // Fixed debug keystore (committed) so local + CI builds share one SHA-1 — the one
+        // One committed keystore for both build types so local + CI builds share the SHA-1
         // registered in Google Cloud — keeping Google Sign-In working on every build.
+        // (Debug key used for release too, for now — a dedicated release key is Phase 3.)
         debug {
+            storeFile file('../greetings-debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        release {
             storeFile file('../greetings-debug.keystore')
             storePassword 'android'
             keyAlias 'androiddebugkey'
@@ -31,6 +38,7 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

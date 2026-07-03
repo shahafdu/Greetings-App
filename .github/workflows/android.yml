@@ -46,20 +46,21 @@ jobs:
           npm run build
           npx cap sync android
 
-      - name: Build debug APK
+      - name: Build signed release APK
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --console=plain
+          ./gradlew assembleRelease --console=plain
 
       - name: Stage APK
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk greetings-debug.apk
+        run: cp android/app/build/outputs/apk/release/app-release.apk greetings.apk
 
       - name: Publish to "android-latest" Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
           name: Latest Android build
-          body: "Debug APK built from ${{ github.sha }} on ${{ github.ref_name }}."
-          prerelease: true
-          files: greetings-debug.apk
+          body: "Signed release APK built from ${{ github.sha }} on ${{ github.ref_name }}."
+          prerelease: false
+          make_latest: "true"
+          files: greetings.apk
