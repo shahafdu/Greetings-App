@@ -758,6 +758,17 @@ export default function App() {
     }
   };
 
+  // Share the encrypted bundle as TEXT (best for WhatsApp — sent as a normal message, no file
+  // to save/find). On web, copy it to the clipboard.
+  const handleShareAsText = async () => {
+    if (Capacitor.isNativePlatform()) {
+      const { Share } = await import('@capacitor/share');
+      await Share.share({ text: shareBlob, dialogTitle: 'שיתוף אירועים' });
+    } else {
+      await navigator.clipboard?.writeText(shareBlob);
+    }
+  };
+
   const openImportModal = () => {
     setImportBlob('');
     setImportFileName('');
@@ -2839,11 +2850,17 @@ export default function App() {
                   {shareCode}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={handleSendShareFile}>
-                    <Share2 size={16} /> <span>{Capacitor.isNativePlatform() ? 'שתף/י את הקובץ' : 'הורד/י את הקובץ'}</span>
+                  <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: '140px' }} onClick={handleShareAsText}>
+                    <Share2 size={16} /> <span>{Capacitor.isNativePlatform() ? 'שתף/י כטקסט (וואטסאפ)' : 'העתק/י טקסט מוצפן'}</span>
+                  </button>
+                  <button type="button" className="btn btn-secondary" style={{ flex: 1, minWidth: '140px' }} onClick={handleSendShareFile}>
+                    <FileText size={16} /> <span>{Capacitor.isNativePlatform() ? 'שתף/י כקובץ (מייל)' : 'הורד/י קובץ'}</span>
                   </button>
                   <button type="button" className="icon-btn" title="העתק קוד" onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
                 </div>
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
+                  💡 לוואטסאפ — עדיף "כטקסט" (נשלח כהודעה, המקבל/ת מדביק/ה בייבוא). למייל — "כקובץ".
+                </p>
               </>
             )}
           </div>
@@ -2866,10 +2883,20 @@ export default function App() {
               </div>
             ) : (
               <>
-                <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.75rem' }}>
-                  <Import size={16} /> <span>{importFileName || 'בחר/י קובץ שיתוף'}</span>
+                <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.6rem' }}>
+                  <Import size={16} /> <span>{importFileName || 'בחר/י קובץ שיתוף (מייל)'}</span>
                   <input type="file" style={{ display: 'none' }} onChange={handleImportFilePick} />
                 </label>
+
+                <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.15rem 0 0.5rem' }}>— או —</div>
+                <textarea
+                  className="form-textarea"
+                  rows={3}
+                  placeholder="הדבק/י כאן את הטקסט המוצפן (למשל מוואטסאפ)"
+                  value={importFileName ? '' : importBlob}
+                  onChange={(e) => { setImportBlob(e.target.value.trim()); setImportFileName(''); setImportPreview(null); setImportError(''); }}
+                  style={{ marginBottom: '0.75rem' }}
+                />
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="import-code">קוד הפענוח</label>
