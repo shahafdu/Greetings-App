@@ -211,6 +211,16 @@ const callOpenAICompatible = async (
 const callGroq = (prompt: string, apiKey: string, model: string): Promise<string> =>
   callOpenAICompatible('https://api.groq.com/openai/v1/chat/completions', prompt, apiKey, model);
 
+// Built-in AI proxy (a server you host that holds ONE key, so users need no key of their own).
+// Set AI_PROXY_URL to your deployed Cloudflare Worker URL to enable the "מובנה (ללא מפתח)" option.
+// AI_PROXY_TOKEN is optional (only if you set PROXY_TOKEN on the Worker as an extra gate).
+export const AI_PROXY_URL: string = ''; // set to your deployed Worker URL to enable the proxy option
+const AI_PROXY_TOKEN: string = '';
+export const DEFAULT_PROXY_MODEL = 'openai/gpt-oss-120b';
+
+const callProxy = (prompt: string, model: string): Promise<string> =>
+  callOpenAICompatible(AI_PROXY_URL, prompt, AI_PROXY_TOKEN, model);
+
 const callOpenRouter = (prompt: string, apiKey: string, model: string): Promise<string> =>
   callOpenAICompatible('https://openrouter.ai/api/v1/chat/completions', prompt, apiKey, model, {
     'HTTP-Referer': typeof window !== 'undefined' ? window.location.origin : 'https://localhost',
@@ -244,6 +254,10 @@ export const fetchOpenRouterFreeModels = async (): Promise<string[]> => {
 // Resolve the active provider, its key and model from settings.
 const resolveProvider = (settings: AppSettings) => {
   const provider = settings.aiProvider || 'gemini';
+  if (provider === 'proxy') {
+    // The proxy holds the key server-side; the "key" here is just the optional proxy token.
+    return { provider: 'proxy' as const, key: AI_PROXY_TOKEN, model: DEFAULT_PROXY_MODEL, label: 'מובנה' };
+  }
   if (provider === 'groq') {
     return { provider: 'groq' as const, key: (settings.groqApiKey || '').trim(), model: settings.groqModel || DEFAULT_GROQ_MODEL, label: 'Groq' };
   }
@@ -259,7 +273,8 @@ const resolveProvider = (settings: AppSettings) => {
 };
 
 // Run a prompt against the active provider.
-const callProvider = (provider: 'gemini' | 'groq' | 'openrouter', prompt: string, key: string, model: string): Promise<string> => {
+const callProvider = (provider: 'gemini' | 'groq' | 'openrouter' | 'proxy', prompt: string, key: string, model: string): Promise<string> => {
+  if (provider === 'proxy') return callProxy(prompt, model);
   if (provider === 'groq') return callGroq(prompt, key, model);
   if (provider === 'openrouter') return callOpenRouter(prompt, key, model);
   return callGemini(prompt, key, model);
@@ -268,7 +283,7 @@ const callProvider = (provider: 'gemini' | 'groq' | 'openrouter', prompt: string
 // Validate the user's API key for the active provider with a minimal real request.
 export const testAiApiKey = async (settings: AppSettings): Promise<{ ok: boolean; error?: string }> => {
   const { provider, key, model } = resolveProvider(settings);
-  if (!key) return { ok: false, error: 'לא הוזן מפתח API.' };
+  if (provider !== 'proxy' && !key) return { ok: false, error: 'לא הוזן מפתח API.' };
   try {
     await callProvider(provider, 'בדיקה', key, model);
     return { ok: true };
@@ -301,9 +316,10 @@ export const generateHebrewBirthdayGreeting = async (
   const senderName = (settings.senderName || '').trim();
   const { provider, key, model, label } = resolveProvider(settings);
 
-  // Real AI generation requires an API key for the active provider; without one we use
-  // the local Hebrew template fallback (no error: this is expected).
-  if (!key) {
+  // Real AI generation needs either a key (gemini/groq/openrouter) or a configured proxy URL.
+  // Without one we use the local Hebrew template fallback (no error: this is expected).
+  const canUseAi = provider === 'proxy' ? !!AI_PROXY_URL : !!key;
+  if (!canUseAi) {
     return { text: generateFallbackGreeting(person, tone, customDetails, senderGender, senderName) };
   }
 

@@ -59,7 +59,7 @@ import {
 } from './services/storage';
 import type { AiProvider } from './services/storage';
 
-import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels } from './services/gemini';
+import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
 import { scheduleEventNotifications } from './services/notifications';
 import {
   fetchGoogleContacts,
@@ -2366,6 +2366,18 @@ export default function App() {
               <div className="form-group">
                 <label className="form-label">ספק הבינה המלאכותית (AI)</label>
                 <div className="gender-radio-group">
+                  {AI_PROXY_URL && (
+                    <label className="gender-radio-label">
+                      <input
+                        type="radio"
+                        name="aiProvider"
+                        className="gender-radio-input"
+                        checked={settings.aiProvider === 'proxy'}
+                        onChange={() => { setLocalSettings({ ...settings, aiProvider: 'proxy' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                      />
+                      <span>מובנה (ללא מפתח) ✨</span>
+                    </label>
+                  )}
                   <label className="gender-radio-label">
                     <input
                       type="radio"

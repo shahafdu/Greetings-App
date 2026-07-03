@@ -35,7 +35,7 @@ export interface Person {
   sourceEventId?: string;
 }
 
-export type AiProvider = 'gemini' | 'groq' | 'openrouter';
+export type AiProvider = 'gemini' | 'groq' | 'openrouter' | 'proxy';
 
 export interface AppSettings {
   // Which AI backend to use for greetings. Each is optional; without a key the app
