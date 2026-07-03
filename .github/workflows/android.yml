@@ -50,7 +50,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleRelease --console=plain
+          ./gradlew assembleRelease --console=plain -PversionCode=${{ github.run_number }} -PversionName=1.0.${{ github.run_number }}
 
       - name: Stage APK
         run: cp android/app/build/outputs/apk/release/app-release.apk greetings.apk
@@ -59,8 +59,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: android-latest
-          name: Latest Android build
-          body: "Signed release APK built from ${{ github.sha }} on ${{ github.ref_name }}."
+          name: "Build ${{ github.run_number }}"
+          body: "Signed release APK · build ${{ github.run_number }} · ${{ github.sha }} on ${{ github.ref_name }}."
           prerelease: false
           make_latest: "true"
           files: greetings.apk

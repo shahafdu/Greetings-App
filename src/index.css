@@ -404,6 +404,21 @@ body {
 }
 
 /* Clear-search (x) button on the left of the search box. */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid var(--secondary);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 1rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
 .search-clear-btn {
   position: absolute;
   left: 0.5rem;

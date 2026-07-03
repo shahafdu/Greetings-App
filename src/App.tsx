@@ -62,6 +62,7 @@ import type { AiProvider } from './services/storage';
 
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
 import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel } from './services/hebrewDate';
+import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
 import { scheduleEventNotifications } from './services/notifications';
 import {
   fetchGoogleContacts,
@@ -151,6 +152,9 @@ export default function App() {
   const [formDateMode, setFormDateMode] = useState<'gregorian' | 'hebrew' | 'both'>('gregorian');
   const [formHebrewEdited, setFormHebrewEdited] = useState(false); // user manually overrode it
   const [showHebrewEdit, setShowHebrewEdit] = useState(false);
+  // In-app update prompt (GitHub Releases)
+  const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
 
   // Calendar Navigation State
   const todayDate = new Date();
@@ -272,6 +276,11 @@ export default function App() {
     })();
     return () => { if (remove) remove(); };
   }, [showEventForm, showContactsModal, showGreetingModal, selectedDay, activeTab]);
+
+  // Check GitHub Releases for a newer build on every launch (no-ops while the repo is private).
+  useEffect(() => {
+    checkForUpdate().then(info => { if (info?.available) setUpdateInfo(info); });
+  }, []);
 
   // Auto-compute the Hebrew date from the Gregorian date (unless the user overrode it).
   useEffect(() => {
@@ -1223,6 +1232,26 @@ export default function App() {
           </button>
         </nav>
       </header>
+
+      {/* Update-available banner */}
+      {updateInfo?.available && !updateDismissed && (
+        <div className="update-banner">
+          <span>🔄 גרסה חדשה זמינה{updateInfo.label ? ` (${updateInfo.label})` : ''}</span>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.8rem' }}
+              onClick={() => window.open(updateInfo.url, '_blank')}
+            >
+              הורד/י
+            </button>
+            <button type="button" className="icon-btn" onClick={() => setUpdateDismissed(true)} title="סגור">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Birthday Alert Banner */}
       {todaysOccasions.length > 0 && activeTab !== 'settings' && (
