@@ -206,7 +206,6 @@ export default function App() {
 
   // Calendar Sync state (real Google Calendar via Calendar API; shown on the calendar grid)
   const [googleEvents, setGoogleEvents] = useState<GoogleCalendarEvent[]>([]);
-  const [importedEventIds, setImportedEventIds] = useState<string[]>([]);
   const [calendarLoading, setCalendarLoading] = useState(false);
   const [calendarError, setCalendarError] = useState('');
   // The day tapped on the calendar grid — shows a detail panel with that day's full event list.
@@ -687,7 +686,9 @@ export default function App() {
       useFirstNameOnly: formUseFirstNameOnly,
       proxyName: formViaProxy && formProxyName.trim() ? formProxyName.trim() : undefined,
       proxyGender: formViaProxy ? formProxyGender : undefined,
-      celebrantRelationToProxy: formViaProxy && formCelebrantLink.trim() ? formCelebrantLink.trim() : undefined
+      celebrantRelationToProxy: formViaProxy && formCelebrantLink.trim() ? formCelebrantLink.trim() : undefined,
+      // Link to the synced event this was imported from (new import), or keep the existing link on edit.
+      sourceEventId: pendingImportEventId || editingPerson?.sourceEventId || undefined
     };
 
     if (editingPerson) {
@@ -696,10 +697,7 @@ export default function App() {
       addPerson(personData);
     }
 
-    if (pendingImportEventId) {
-      setImportedEventIds(prev => [...prev, pendingImportEventId]);
-      setPendingImportEventId(null);
-    }
+    setPendingImportEventId(null);
     resetForm();
     setShowEventForm(false);
     refreshPeopleList();
@@ -979,6 +977,12 @@ export default function App() {
     }
   };
 
+  // Source-event ids that are already saved as app events — used to hide their dashed chip.
+  // Derived from people, so DELETING an event automatically brings its dashed chip back.
+  const importedSourceIds = new Set(
+    people.map(p => p.sourceEventId).filter((x): x is string => !!x)
+  );
+
   // Saved events + pending (synced, not-yet-added) events that fall on a given day.
   const getEventsForDay = (year: number, month: number, day: number) => {
     const cellDate = new Date(year, month, day);
@@ -995,7 +999,7 @@ export default function App() {
       return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
     });
     const pending = googleEvents.filter(e => {
-      if (importedEventIds.includes(e.id)) return false;
+      if (importedSourceIds.has(e.id)) return false;
       const [y, m, d] = e.date.split('-').map(Number);
       return y === year && (m - 1) === month && d === day;
     });
@@ -1059,7 +1063,7 @@ export default function App() {
 
       // Pending (not-yet-imported) Google Calendar events that fall on this cell's date.
       const cellGoogleEvents = googleEvents.filter(e => {
-        if (importedEventIds.includes(e.id)) return false;
+        if (importedSourceIds.has(e.id)) return false;
         const [y, m, d] = e.date.split('-').map(Number);
         return y === cell.year && (m - 1) === cell.month && d === cell.day;
       });
@@ -1767,7 +1771,7 @@ export default function App() {
                   return <span style={{ fontSize: '0.8rem', color: 'var(--danger, #ff5c5c)' }}>{calendarError}</span>;
                 }
                 if (!calendarLoading && googleEvents.length > 0) {
-                  const pending = googleEvents.filter(e => !importedEventIds.includes(e.id)).length;
+                  const pending = googleEvents.filter(e => !importedSourceIds.has(e.id)).length;
                   return (
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
                       {pending > 0 ? `נמצאו ${pending} אירועים — לחץ/י על אירוע מקווקו בלוח כדי לייבא ➕` : 'כל האירועים יובאו 🎉'}

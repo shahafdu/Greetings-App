@@ -30,6 +30,9 @@ export interface Person {
   proxyName?: string;
   proxyGender?: 'Male' | 'Female' | 'Couple';
   celebrantRelationToProxy?: string; // free text describing the celebrant to the proxy, e.g. "הבן שלך"
+  // If this event was imported from a synced calendar event, its source id. Used to hide that
+  // event's dashed chip on the calendar — and to bring it back if this event is deleted.
+  sourceEventId?: string;
 }
 
 export type AiProvider = 'gemini' | 'groq' | 'openrouter';
