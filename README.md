@@ -37,7 +37,8 @@ Release builds are produced by GitHub Actions and published to the **Releases** 
 
 ## Privacy & license
 - Privacy policy: [PRIVACY.md](./PRIVACY.md) — data stays on your device.
-- License: [MIT](./LICENSE).
+- License: [GNU GPL v3](./LICENSE) — a copyleft license: derivative works must also be
+  released as open source under the GPL.
 
 The AI proxy lives in [`worker/`](./worker) (a Cloudflare Worker). The Google OAuth client ID in
 `src/main.tsx` is a public identifier, not a secret. Real keys/tokens are never committed.

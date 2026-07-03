@@ -282,6 +282,13 @@ export default function App() {
     checkForUpdate().then(info => { if (info?.available) setUpdateInfo(info); });
   }, []);
 
+  // Auto-save settings on any change (skip the initial mount) — no manual "save" needed.
+  const didMountSettings = useRef(false);
+  useEffect(() => {
+    if (!didMountSettings.current) { didMountSettings.current = true; return; }
+    saveSettings(settings);
+  }, [settings]);
+
   // Auto-compute the Hebrew date from the Gregorian date (unless the user overrode it).
   useEffect(() => {
     if (formHebrewEdited) return;
@@ -2316,21 +2323,6 @@ export default function App() {
           <section className="glass-card section-panel settings-panel" id="settings-section">
             <h2 style={{ fontSize: '1.5rem', fontWeight: 800, marginBottom: '1rem' }}>הגדרות האפליקציה</h2>
 
-            {/* Hebrew calendar toggle */}
-            <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer' }}>
-                <input
-                  type="checkbox"
-                  checked={!!settings.showHebrewDates}
-                  onChange={(e) => { const s = { ...settings, showHebrewDates: e.target.checked }; setLocalSettings(s); saveSettings(s); }}
-                />
-                <span style={{ fontWeight: 700 }}>🕎 הצג תאריכים עבריים</span>
-              </label>
-              <p className="settings-description" style={{ fontSize: '0.82rem', marginTop: '0.5rem', lineHeight: '1.5' }}>
-                מציג את התאריך העברי לצד הלועזי בלוח השנה ובטופס האירוע. לכל אירוע ניתן לבחור לחשב תזכורות ומחזוריות לפי התאריך העברי.
-              </p>
-            </div>
-
             {/* Google Authentication Box */}
             <div className="glass-card" style={{ padding: '1.5rem', marginBottom: '2rem', border: '1px solid rgba(138,43,226,0.2)' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '0.5rem', color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -2474,7 +2466,7 @@ export default function App() {
                   </label>
                 </div>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                  הברכות נכתבות בגוף ראשון — הגדרה זו קובעת אם ייכתב "מאחל" או "מאחלת". זכור/י ללחוץ "שמור הגדרות".
+                  הברכות נכתבות בגוף ראשון — הגדרה זו קובעת אם ייכתב "מאחל" או "מאחלת".
                 </p>
 
                 <label className="form-label" style={{ marginTop: '0.9rem' }}>השם שלך (לחתימת הברכה)</label>
@@ -2488,54 +2480,33 @@ export default function App() {
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
                   אם תזין/י שם, הברכות ייחתמו בו (למשל: "באהבה, דנה"). השאר/י ריק לברכה ללא חתימה.
                 </p>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', marginTop: '1rem' }}>
+                  <input
+                    type="checkbox"
+                    checked={!!settings.showHebrewDates}
+                    onChange={(e) => setLocalSettings({ ...settings, showHebrewDates: e.target.checked })}
+                  />
+                  <span style={{ fontWeight: 700 }}>🕎 הצג תאריכים עבריים</span>
+                </label>
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
+                  מציג את התאריך העברי לצד הלועזי בלוח השנה ובטופס האירוע, עם אפשרות לחשב תזכורות לפי התאריך העברי לכל אירוע.
+                </p>
               </div>
 
               <div className="form-group">
-                <label className="form-label">ספק הבינה המלאכותית (AI)</label>
-                <div className="gender-radio-group">
-                  {AI_PROXY_URL && (
-                    <label className="gender-radio-label">
-                      <input
-                        type="radio"
-                        name="aiProvider"
-                        className="gender-radio-input"
-                        checked={settings.aiProvider === 'proxy'}
-                        onChange={() => { setLocalSettings({ ...settings, aiProvider: 'proxy' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
-                      />
-                      <span>מובנה (ללא מפתח) ✨</span>
-                    </label>
-                  )}
-                  <label className="gender-radio-label">
-                    <input
-                      type="radio"
-                      name="aiProvider"
-                      className="gender-radio-input"
-                      checked={(settings.aiProvider || 'gemini') === 'gemini'}
-                      onChange={() => { setLocalSettings({ ...settings, aiProvider: 'gemini' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
-                    />
-                    <span>Google Gemini</span>
-                  </label>
-                  <label className="gender-radio-label">
-                    <input
-                      type="radio"
-                      name="aiProvider"
-                      className="gender-radio-input"
-                      checked={settings.aiProvider === 'groq'}
-                      onChange={() => { setLocalSettings({ ...settings, aiProvider: 'groq' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
-                    />
-                    <span>Groq (חינמי) ⚡</span>
-                  </label>
-                  <label className="gender-radio-label">
-                    <input
-                      type="radio"
-                      name="aiProvider"
-                      className="gender-radio-input"
-                      checked={settings.aiProvider === 'openrouter'}
-                      onChange={() => { setLocalSettings({ ...settings, aiProvider: 'openrouter' as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
-                    />
-                    <span>OpenRouter (Gemma חינמי) 🧩</span>
-                  </label>
-                </div>
+                <label className="form-label" htmlFor="select-ai-provider">ספק הבינה המלאכותית (AI)</label>
+                <select
+                  id="select-ai-provider"
+                  className="form-select"
+                  value={settings.aiProvider || 'gemini'}
+                  onChange={(e) => { setLocalSettings({ ...settings, aiProvider: e.target.value as AiProvider }); setKeyTestStatus('idle'); setKeyTestError(''); }}
+                >
+                  {AI_PROXY_URL && <option value="proxy">מובנה (ללא מפתח)</option>}
+                  <option value="gemini">Google Gemini</option>
+                  <option value="groq">Groq (חינמי)</option>
+                  <option value="openrouter">OpenRouter (חינמי)</option>
+                </select>
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
                   לכל ספק מפתח API נפרד. ללא מפתח — האפליקציה משתמשת בברכות תבנית מובנות (חינם, ללא AI).
                 </p>
@@ -2637,10 +2608,8 @@ export default function App() {
                 </>
               )}
 
-              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem', flexWrap: 'wrap' }}>
-                <button type="submit" className="btn btn-primary" id="btn-save-settings" style={{ width: 'auto' }}>
-                  שמור הגדרות
-                </button>
+              <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ההגדרות נשמרות אוטומטית ✓</span>
                 <button
                   type="button"
                   className="btn btn-secondary"
