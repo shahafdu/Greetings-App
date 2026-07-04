@@ -4,7 +4,10 @@
 // 12=Adar (Adar I in a leap year), 13=Adar II. We store day+month for an event so its
 // anniversary can recur on the Hebrew calendar (a different Gregorian date each year).
 
-import { HDate } from '@hebcal/core';
+import { HDate, gematriya } from '@hebcal/core';
+
+// Hebrew-letter form of a day-of-month (1..30), e.g. 15 -> "ט״ו".
+export const dayGematriya = (day: number): string => gematriya(day);
 
 export interface HebrewDateParts {
   day: number;   // 1..30

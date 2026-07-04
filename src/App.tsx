@@ -62,7 +62,7 @@ import {
 import type { AiProvider } from './services/storage';
 
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
-import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel } from './services/hebrewDate';
+import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel, dayGematriya } from './services/hebrewDate';
 import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
 import { generateShareCode, encryptEvents, decryptEvents, type PortableEvent } from './services/share';
 import { t, setLang } from './i18n';
@@ -312,6 +312,7 @@ export default function App() {
     document.documentElement.setAttribute('lang', lang);
     document.documentElement.setAttribute('dir', dir);
     document.body.style.direction = dir;
+    setGreetingLang(lang); // greeting default follows the app language on every language change
   }, [settings.language]);
 
   // Auto-save settings on any change (skip the initial mount) — no manual "save" needed.
@@ -1585,12 +1586,15 @@ export default function App() {
 
                     {showHebrewEdit && (
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>
-                        <input
-                          type="number" min={1} max={30}
-                          className="form-input numbers-font" style={{ width: '75px' }}
+                        <select
+                          className="form-select" style={{ width: 'auto', minWidth: '70px' }}
                           value={formHebrewDay}
                           onChange={(e) => { setFormHebrewDay(Number(e.target.value)); setFormHebrewEdited(true); }}
-                        />
+                        >
+                          {Array.from({ length: 30 }, (_, i) => i + 1).map(d => (
+                            <option key={d} value={d}>{dayGematriya(d)}</option>
+                          ))}
+                        </select>
                         <select
                           className="form-select" style={{ width: 'auto', flex: 1, minWidth: '120px' }}
                           value={formHebrewMonth}
@@ -2371,7 +2375,7 @@ export default function App() {
                       className={`tone-btn ${greetingLang === 'en' ? 'active' : ''}`}
                       onClick={() => { setGreetingLang('en'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'en'); }}
                     >
-                      English
+                      {t('אנגלית')}
                     </button>
                   </div>
                 </div>
@@ -2796,6 +2800,7 @@ export default function App() {
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('ההגדרות נשמרות אוטומטית ✓')}</span>
+                {settings.aiProvider !== 'proxy' && (
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -2815,6 +2820,7 @@ export default function App() {
                     </>
                   )}
                 </button>
+                )}
               </div>
 
               {keyTestStatus === 'valid' && (
@@ -3187,7 +3193,7 @@ export default function App() {
                       className={`tone-btn ${greetingLang === 'en' ? 'active' : ''}`}
                       onClick={() => { setGreetingLang('en'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'en'); }}
                     >
-                      English
+                      {t('אנגלית')}
                     </button>
                   </div>
                 </div>

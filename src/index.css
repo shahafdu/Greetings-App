@@ -662,6 +662,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* Keep prev/next on consistent sides regardless of UI language (arrows stay correct). */
+  direction: rtl;
 }
 
 .calendar-nav-btn {
