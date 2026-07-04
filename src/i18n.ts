@@ -277,6 +277,17 @@ const EN: Record<string, string> = {
   'ההגדרות נשמרו!': 'Settings saved!',
   'איך משיגים מפתח API בחינם?': 'How to get a free API key?',
   'שם': 'Name',
+  '🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.': '🔒 The key is stored only on your device — never sent to any external server.',
+  'אם מתקבלת שגיאת מכסה (429 / quota), נסה/י מודל אחר — זמינות המכסה החינמית משתנה לפי חשבון ואזור.': 'If you get a quota error (429), try another model — free-tier availability varies by account and region.',
+  '🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.': '🔒 The key is stored only on your device. Groq is completely free with a generous quota.',
+  'נותן את התוצאות הטובות ביותר בעברית. הדגמים הקטנים חלשים יותר.': 'gives the best results. The smaller models are weaker.',
+  '🔒 המפתח נשמר רק במכשיר שלך. OpenRouter מאפשר שימוש חינמי בדגמי Gemma הפתוחים.': '🔒 The key is stored only on your device. OpenRouter offers free use of open Gemma models.',
+  'מודל OpenRouter': 'OpenRouter model',
+  '(טוען רשימה...)': '(loading...)',
+  'המפתח אינו תקין.': 'The key is invalid.',
+  'ברכה עבור': 'Greeting for',
+  'שנים': 'years',
+  'יצירת ברכה חכמה ללא שמירה': 'Create a smart greeting without saving',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

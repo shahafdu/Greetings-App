@@ -911,9 +911,10 @@ export default function App() {
 
   // Generate Greeting Action (Stored Person)
   const handleOpenGreeting = async (person: Person) => {
+    const lang = settings.language || 'he';
     setIsQuickMode(false);
     setGreetingPerson(person);
-    setGreetingTone('normal'); setGreetingLang(settings.language || 'he');
+    setGreetingTone('normal'); setGreetingLang(lang);
     setCustomGreetingDetails('');
     setGreetingText('');
     setGreetingError('');
@@ -921,7 +922,7 @@ export default function App() {
     setIsGenerating(true);
 
     try {
-      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings, greetingLang);
+      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings, lang);
       setGreetingText(text);
       setGreetingError(error || '');
     } catch (err) {
@@ -1843,7 +1844,7 @@ export default function App() {
                     {editingPerson ? t('שמור שינויים') : t('הוסף אירוע')}
                   </button>
                   <button type="button" className="btn btn-secondary" onClick={handleCloseEventForm} style={{ flex: 1 }}>
-                    ביטול
+                    {t('ביטול')}
                   </button>
                 </div>
               </form>
@@ -1948,7 +1949,7 @@ export default function App() {
                           <span style={{ fontSize: '1.2rem', marginRight: '2px' }}>{getOccasionEmoji(person.occasion)}</span>
                           <span>{person.firstName} {person.lastName || ''}</span>
                           <span className={`gender-badge ${person.gender === 'Female' ? 'female' : 'male'}`}>
-                            {getGenderLabel(person.gender)}
+                            {t(getGenderLabel(person.gender))}
                           </span>
                         </div>
                         <span className="person-relation">{t(person.relation)}</span>
@@ -2183,7 +2184,7 @@ export default function App() {
                     onChange={(e) => setQuickOccasion(e.target.value as any)}
                   >
                     {OCCASIONS.map(o => (
-                      <option key={o} value={o}>{o}</option>
+                      <option key={o} value={o}>{t(o)}</option>
                     ))}
                   </select>
                 </div>
@@ -2197,7 +2198,7 @@ export default function App() {
                     onChange={(e) => handleQuickRelationChange(e.target.value)}
                   >
                     {RELATIONS.map(r => (
-                      <option key={r} value={r}>{r}</option>
+                      <option key={r} value={r}>{t(r)}</option>
                     ))}
                   </select>
                 </div>
@@ -2359,7 +2360,7 @@ export default function App() {
                       className={`tone-btn ${greetingLang === 'he' ? 'active' : ''}`}
                       onClick={() => { setGreetingLang('he'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'he'); }}
                     >
-                      עברית
+                      {t('עברית')}
                     </button>
                     <button
                       type="button"
@@ -2380,7 +2381,7 @@ export default function App() {
                         handleRegenerateGreeting('normal', customGreetingDetails);
                       }}
                     >
-                      חם / רגיל
+                      {t('חם / רגיל')}
                     </button>
                     <button
                       className={`tone-btn ${greetingTone === 'funny' ? 'active' : ''}`}
@@ -2389,7 +2390,7 @@ export default function App() {
                         handleRegenerateGreeting('funny', customGreetingDetails);
                       }}
                     >
-                      מצחיק
+                      {t('מצחיק')}
                     </button>
                     <button
                       className={`tone-btn ${greetingTone === 'emotional' ? 'active' : ''}`}
@@ -2398,7 +2399,7 @@ export default function App() {
                         handleRegenerateGreeting('emotional', customGreetingDetails);
                       }}
                     >
-                      מרגש
+                      {t('מרגש')}
                     </button>
                     <button
                       className={`tone-btn ${greetingTone === 'short' ? 'active' : ''}`}
@@ -2407,7 +2408,7 @@ export default function App() {
                         handleRegenerateGreeting('short', customGreetingDetails);
                       }}
                     >
-                      קצר
+                      {t('קצר')}
                     </button>
                   </div>
                 </div>
@@ -2711,14 +2712,14 @@ export default function App() {
                         {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>{t('🔒 המפתח נשמר רק במכשיר שלך — הוא לא נשלח לאף שרת חיצוני.')}</p>
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="select-gemini-model">{t('מודל Gemini')}</label>
                     <select id="select-gemini-model" className="form-select" value={settings.geminiModel || DEFAULT_GEMINI_MODEL} onChange={(e) => { setLocalSettings({ ...settings, geminiModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {GEMINI_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>אם מתקבלת שגיאת מכסה (429 / quota), נסה/י מודל אחר — זמינות המכסה החינמית משתנה לפי חשבון ואזור.</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>{t('אם מתקבלת שגיאת מכסה (429 / quota), נסה/י מודל אחר — זמינות המכסה החינמית משתנה לפי חשבון ואזור.')}</p>
                   </div>
                 </>
               )}
@@ -2741,14 +2742,14 @@ export default function App() {
                         {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>{t('🔒 המפתח נשמר רק במכשיר שלך. Groq חינמי לחלוטין עם מכסה נדיבה.')}</p>
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="select-groq-model">{t('מודל Groq')}</label>
                     <select id="select-groq-model" className="form-select" value={settings.groqModel || DEFAULT_GROQ_MODEL} onChange={(e) => { setLocalSettings({ ...settings, groqModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {GROQ_MODELS.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}><strong>gpt-oss-120b</strong> נותן את התוצאות הטובות ביותר בעברית. הדגמים הקטנים חלשים יותר.</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}><strong>gpt-oss-120b</strong> {t('נותן את התוצאות הטובות ביותר בעברית. הדגמים הקטנים חלשים יותר.')}</p>
                   </div>
                 </>
               )}
@@ -2771,11 +2772,11 @@ export default function App() {
                         {showApiKey ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
                     </div>
-                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>🔒 המפתח נשמר רק במכשיר שלך. OpenRouter מאפשר שימוש חינמי בדגמי Gemma הפתוחים.</p>
+                    <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>{t('🔒 המפתח נשמר רק במכשיר שלך. OpenRouter מאפשר שימוש חינמי בדגמי Gemma הפתוחים.')}</p>
                   </div>
                   <div className="form-group">
                     <label className="form-label" htmlFor="select-or-model">
-                      מודל OpenRouter {orModelsLoading && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(טוען רשימה...)</span>}
+                      {t('מודל OpenRouter')} {orModelsLoading && <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>{t('(טוען רשימה...)')}</span>}
                     </label>
                     <select id="select-or-model" className="form-select" value={settings.openRouterModel || DEFAULT_OPENROUTER_MODEL} onChange={(e) => { setLocalSettings({ ...settings, openRouterModel: e.target.value }); setKeyTestStatus('idle'); setKeyTestError(''); }}>
                       {Array.from(new Set([...(orModels.length ? orModels : [...OPENROUTER_MODELS]), ...(settings.openRouterModel ? [settings.openRouterModel] : [])])).map(m => <option key={m} value={m}>{m}</option>)}
@@ -2801,12 +2802,12 @@ export default function App() {
                   {keyTestStatus === 'testing' ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <div className="spinner" style={{ width: '16px', height: '16px', borderWidth: '2px', margin: 0 }}></div>
-                      <span>בודק...</span>
+                      <span>{t('בודק...')}</span>
                     </div>
                   ) : (
                     <>
                       <CheckCircle size={16} />
-                      <span>בדוק/י מפתח</span>
+                      <span>{t('בדוק/י מפתח')}</span>
                     </>
                   )}
                 </button>
@@ -2820,7 +2821,7 @@ export default function App() {
               )}
               {keyTestStatus === 'invalid' && (
                 <div style={{ marginTop: '1rem', color: 'var(--danger, #ff5c5c)', fontWeight: 'bold', fontSize: '0.85rem', lineHeight: '1.4' }}>
-                  ❌ המפתח אינו תקין. {keyTestError && <span style={{ fontWeight: 400, opacity: 0.85 }}>({keyTestError})</span>}
+                  ❌ {t('המפתח אינו תקין.')} {keyTestError && <span style={{ fontWeight: 400, opacity: 0.85 }}>({keyTestError})</span>}
                 </div>
               )}
 
@@ -2994,14 +2995,14 @@ export default function App() {
               <h2 style={{ fontSize: '1.4rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Sparkles size={22} style={{ color: 'var(--primary)' }} />
                 <span>
-                  {isQuickMode 
-                    ? 'מחולל ברכות מהיר (על פי דרישה) ⚡' 
-                    : `ניסוח ברכת ${greetingPerson?.occasion} ל-${greetingPerson?.firstName}`}
+                  {isQuickMode
+                    ? t('מחולל ברכות מהיר (על פי דרישה) ⚡')
+                    : `${t('ברכה עבור')} ${greetingPerson?.firstName}`}
                 </span>
               </h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                {!isQuickMode && greetingPerson && `${greetingPerson.relation} • ${greetingPerson.occasion} (${calculateYears(greetingPerson.eventDate)} שנים)`}
-                {isQuickMode && 'יצירת ברכה חכמה בעברית ללא רישום במסד הנתונים'}
+                {!isQuickMode && greetingPerson && `${t(greetingPerson.relation)} • ${t(greetingPerson.occasion)} (${calculateYears(greetingPerson.eventDate)} ${t('שנים')})`}
+                {isQuickMode && t('יצירת ברכה חכמה ללא שמירה')}
               </p>
             </div>
 
@@ -3045,7 +3046,7 @@ export default function App() {
                       onChange={(e) => setQuickOccasion(e.target.value as any)}
                     >
                       {OCCASIONS.map(o => (
-                        <option key={o} value={o}>{o}</option>
+                        <option key={o} value={o}>{t(o)}</option>
                       ))}
                     </select>
                   </div>
@@ -3059,7 +3060,7 @@ export default function App() {
                       onChange={(e) => handleQuickRelationChange(e.target.value)}
                     >
                       {RELATIONS.map(r => (
-                        <option key={r} value={r}>{r}</option>
+                        <option key={r} value={r}>{t(r)}</option>
                       ))}
                     </select>
                   </div>
@@ -3173,7 +3174,7 @@ export default function App() {
                       className={`tone-btn ${greetingLang === 'he' ? 'active' : ''}`}
                       onClick={() => { setGreetingLang('he'); handleRegenerateGreeting(greetingTone, customGreetingDetails, undefined, 'he'); }}
                     >
-                      עברית
+                      {t('עברית')}
                     </button>
                     <button
                       type="button"
@@ -3194,7 +3195,7 @@ export default function App() {
                         handleRegenerateGreeting('normal', customGreetingDetails);
                       }}
                     >
-                      חם / רגיל
+                      {t('חם / רגיל')}
                     </button>
                     <button
                       className={`tone-btn ${greetingTone === 'funny' ? 'active' : ''}`}
@@ -3203,7 +3204,7 @@ export default function App() {
                         handleRegenerateGreeting('funny', customGreetingDetails);
                       }}
                     >
-                      מצחיק
+                      {t('מצחיק')}
                     </button>
                     <button
                       className={`tone-btn ${greetingTone === 'emotional' ? 'active' : ''}`}
@@ -3212,7 +3213,7 @@ export default function App() {
                         handleRegenerateGreeting('emotional', customGreetingDetails);
                       }}
                     >
-                      מרגש
+                      {t('מרגש')}
                     </button>
                     <button
                       className={`tone-btn ${greetingTone === 'short' ? 'active' : ''}`}
@@ -3221,7 +3222,7 @@ export default function App() {
                         handleRegenerateGreeting('short', customGreetingDetails);
                       }}
                     >
-                      קצר
+                      {t('קצר')}
                     </button>
                   </div>
                 </div>
@@ -3389,7 +3390,7 @@ export default function App() {
                       </div>
                       {c.gender && (
                         <span style={{ fontSize: '0.75rem', padding: '0.15rem 0.4rem', borderRadius: '4px', background: 'rgba(255,255,255,0.05)', color: 'var(--text-secondary)' }}>
-                          {getGenderLabel(c.gender)}
+                          {t(getGenderLabel(c.gender))}
                         </span>
                       )}
                     </div>
