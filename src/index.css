@@ -905,8 +905,8 @@ body {
   font-family: var(--font-main);
   font-size: 1.1rem;
   line-height: 1.8;
-  direction: rtl;
-  text-align: right;
+  /* Direction follows the textarea's dir attribute (LTR for English greetings). */
+  text-align: start;
   padding: 0;
 }
 

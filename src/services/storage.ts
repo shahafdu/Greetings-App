@@ -62,8 +62,10 @@ export interface AppSettings {
   // The gender of the *sender* (the app user writing the greeting). Hebrew first-person
   // verbs ("מאחל" vs "מאחלת") depend on it, so it must be set for correct grammar.
   senderGender?: 'Male' | 'Female';
-  // The sender's name, used to sign the greeting (e.g. "באהבה, דנה").
+  // The sender's name for signing greetings. senderName is the Hebrew form; senderNameEn is the
+  // English form used when the greeting is generated in English (falls back to senderName).
   senderName?: string;
+  senderNameEn?: string;
   // Where contacts/calendar are read from on a phone: the device, or the Google account.
   // (On the web only Google is available.)
   dataSource?: 'device' | 'google';

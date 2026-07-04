@@ -340,7 +340,9 @@ export const generateHebrewBirthdayGreeting = async (
   lang: 'he' | 'en' = 'he'
 ): Promise<GreetingResult> => {
   const senderGender = settings.senderGender || 'Male';
-  const senderName = (settings.senderName || '').trim();
+  const senderName = (lang === 'en'
+    ? (settings.senderNameEn || settings.senderName || '')
+    : (settings.senderName || '')).trim();
   const { provider, key, model, label } = resolveProvider(settings);
   // Language-aware fallback (used whenever real AI is unavailable or fails).
   const fb = (): string => lang === 'en'

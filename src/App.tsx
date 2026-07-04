@@ -2357,7 +2357,7 @@ export default function App() {
                   value={greetingText}
                   onChange={(e) => setGreetingText(e.target.value)}
                   placeholder={t('הברכה תופיע כאן וניתנת לעריכה לפני שליחה. מלא/י את הפרטים ולחץ/י "ייצר ברכה".')}
-                  dir="rtl"
+                  dir={greetingLang === 'en' ? 'ltr' : 'rtl'}
                 />
               )}
             </div>
@@ -2672,7 +2672,7 @@ export default function App() {
                   {t('הברכות נכתבות בגוף ראשון — קובע אם ייכתב "מאחל" או "מאחלת".')}
                 </p>
 
-                <label className="form-label" style={{ marginTop: '0.9rem' }}>{t('השם שלך (לחתימת הברכה)')}</label>
+                <label className="form-label" style={{ marginTop: '0.9rem' }}>{t('השם שלך בעברית (לחתימת הברכה)')}</label>
                 <input
                   type="text"
                   className="form-input"
@@ -2680,8 +2680,17 @@ export default function App() {
                   value={settings.senderName || ''}
                   onChange={(e) => setLocalSettings({ ...settings, senderName: e.target.value })}
                 />
+                <label className="form-label" style={{ marginTop: '0.6rem' }}>{t('השם שלך באנגלית')}</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  dir="ltr"
+                  placeholder="e.g. Dana"
+                  value={settings.senderNameEn || ''}
+                  onChange={(e) => setLocalSettings({ ...settings, senderNameEn: e.target.value })}
+                />
                 <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.4rem', lineHeight: '1.4' }}>
-                  {t('אם תזין/י שם, הברכות ייחתמו בו. השאר/י ריק לברכה ללא חתימה.')}
+                  {t('אם תזין/י שם, הברכות ייחתמו בו (לפי שפת הברכה). השאר/י ריק לברכה ללא חתימה.')}
                 </p>
 
                 <label style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', cursor: 'pointer', marginTop: '1rem' }}>
@@ -3175,7 +3184,7 @@ export default function App() {
                   value={greetingText}
                   onChange={(e) => setGreetingText(e.target.value)}
                   placeholder={t('הברכה תופיע כאן וניתנת לעריכה לפני שליחה. מלא/י את הפרטים ולחץ/י "ייצר ברכה".')}
-                  dir="rtl"
+                  dir={greetingLang === 'en' ? 'ltr' : 'rtl'}
                 />
               )}
             </div>
