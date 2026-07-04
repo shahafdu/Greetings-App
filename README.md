@@ -7,7 +7,7 @@ an **Android** app (via Capacitor). All your data stays **on your device**.
 📖 **New here? Read the [User Guide](docs/USER_GUIDE.md).**
 
 ## Install (Android)
-Grab the latest **`greetings.apk`** from the [**Releases**](../../releases) page and open it on your
+Grab the latest **`greetings.apk`** from the [**Releases**](https://github.com/shahafdu/Greetings-App/releases) page and open it on your
 phone (allow "install unknown apps" once). The app checks for newer versions on launch.
 
 ## Features
