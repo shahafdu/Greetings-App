@@ -43,11 +43,14 @@ const hebrewToGreg = (day: number, month: number, hy: number): Date => {
   return d;
 };
 
-// Gregorian YYYY-MM-DD -> Hebrew parts.
-export const gregToHebrew = (gregStr: string): HebrewDateParts | null => {
+// Gregorian YYYY-MM-DD -> Hebrew parts. If afterSunset, the Hebrew day has already rolled over,
+// so we convert the FOLLOWING civil date (the Hebrew day that began at sundown).
+export const gregToHebrew = (gregStr: string, afterSunset = false): HebrewDateParts | null => {
   const [y, m, d] = (gregStr || '').split('-').map(Number);
   if (!y || !m || !d) return null;
-  const hd = new HDate(new Date(y, m - 1, d));
+  const base = new Date(y, m - 1, d);
+  if (afterSunset) base.setDate(base.getDate() + 1);
+  const hd = new HDate(base);
   return { day: hd.getDate(), month: hd.getMonth(), year: hd.getFullYear(), formatted: hd.renderGematriya(true) };
 };
 

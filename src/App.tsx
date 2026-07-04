@@ -156,6 +156,7 @@ export default function App() {
   const [formHebrewMonth, setFormHebrewMonth] = useState<number | undefined>(undefined);
   const [formDateMode, setFormDateMode] = useState<'gregorian' | 'hebrew' | 'both'>('gregorian');
   const [formHebrewEdited, setFormHebrewEdited] = useState(false); // user manually overrode it
+  const [formHebrewAfterSunset, setFormHebrewAfterSunset] = useState(false);
   const [showHebrewEdit, setShowHebrewEdit] = useState(false);
   // In-app update prompt (GitHub Releases)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -322,13 +323,13 @@ export default function App() {
     saveSettings(settings);
   }, [settings]);
 
-  // Auto-compute the Hebrew date from the Gregorian date (unless the user overrode it).
+  // Auto-compute the Hebrew date from the Gregorian date + sunset flag (unless manually overridden).
   useEffect(() => {
     if (formHebrewEdited) return;
-    const h = gregToHebrew(formDate);
+    const h = gregToHebrew(formDate, formHebrewAfterSunset);
     setFormHebrewDay(h?.day);
     setFormHebrewMonth(h?.month);
-  }, [formDate, formHebrewEdited]);
+  }, [formDate, formHebrewEdited, formHebrewAfterSunset]);
 
   // Detect biometric availability, and auto-prompt fingerprint on the lock screen if enabled.
   useEffect(() => {
@@ -717,6 +718,7 @@ export default function App() {
     setFormCelebrantLink('');
     setFormHebrewDay(undefined);
     setFormHebrewMonth(undefined);
+    setFormHebrewAfterSunset(false);
     setFormDateMode('gregorian');
     setFormHebrewEdited(false);
     setShowHebrewEdit(false);
@@ -860,6 +862,7 @@ export default function App() {
       sourceEventId: pendingImportEventId || editingPerson?.sourceEventId || undefined,
       hebrewDay: formHebrewDay,
       hebrewMonth: formHebrewMonth,
+      hebrewAfterSunset: formHebrewAfterSunset,
       dateMode: formDateMode,
       useHebrewDate: undefined
     };
@@ -906,9 +909,10 @@ export default function App() {
     setFormCelebrantLink(person.celebrantRelationToProxy || '');
     setFormHebrewDay(person.hebrewDay);
     setFormHebrewMonth(person.hebrewMonth);
+    setFormHebrewAfterSunset(!!person.hebrewAfterSunset);
     setFormDateMode(getDateMode(person));
     // Treat as manually edited only if the stored Hebrew date differs from the auto value.
-    const auto = gregToHebrew(person.eventDate);
+    const auto = gregToHebrew(person.eventDate, !!person.hebrewAfterSunset);
     setFormHebrewEdited(!!person.hebrewDay && (!auto || person.hebrewDay !== auto.day || person.hebrewMonth !== auto.month));
     setShowHebrewEdit(false);
     setShowEventForm(true);
@@ -1583,6 +1587,15 @@ export default function App() {
                         {showHebrewEdit ? t('סגור') : t('ערוך')}
                       </button>
                     </div>
+
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.5rem', fontSize: '0.8rem', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+                      <input
+                        type="checkbox"
+                        checked={formHebrewAfterSunset}
+                        onChange={(e) => { setFormHebrewAfterSunset(e.target.checked); setFormHebrewEdited(false); }}
+                      />
+                      <span>{t('נולד/ה אחרי השקיעה (התאריך העברי מתחלף בשקיעה)')}</span>
+                    </label>
 
                     {showHebrewEdit && (
                       <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem', flexWrap: 'wrap' }}>

@@ -301,6 +301,7 @@ const EN: Record<string, string> = {
   'לחץ/י "בדוק/י מפתח" כדי לוודא שהכול עובד. Groq חינמי לחלוטין.': 'Tap "Test key" to confirm it works. Groq is completely free.',
   'בחר/י מודל': 'Pick a',
   'ולחץ/י "בדוק/י מפתח". לדגמים החינמיים יש מגבלת קצב.': 'model and tap "Test key". Free models are rate-limited.',
+  'נולד/ה אחרי השקיעה (התאריך העברי מתחלף בשקיעה)': 'Born after sunset (the Hebrew date rolls over at sunset)',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

@@ -38,6 +38,9 @@ export interface Person {
   // hebcal day + month numbers so the anniversary can recur on the Hebrew calendar.
   hebrewDay?: number;
   hebrewMonth?: number;
+  // Born after sunset? The Hebrew day rolls over at nightfall, so this shifts the auto-computed
+  // Hebrew date one day forward (can even change the Hebrew year near Rosh Hashana).
+  hebrewAfterSunset?: boolean;
   // Which date(s) to greet on: Gregorian only (default), the Hebrew anniversary only, or both.
   dateMode?: 'gregorian' | 'hebrew' | 'both';
   // Deprecated: superseded by dateMode ('hebrew'). Kept so old saved events still work.
