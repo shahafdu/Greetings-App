@@ -2976,20 +2976,10 @@ export default function App() {
               </div>
             ) : (
               <>
-                <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.6rem' }}>
-                  <Import size={16} /> <span>{importFileName || t('בחר/י קובץ שיתוף (מייל)')}</span>
+                <label className="btn btn-secondary" style={{ width: 'auto', marginBottom: '0.75rem' }}>
+                  <Import size={16} /> <span>{importFileName || t('בחר/י קובץ גיבוי')}</span>
                   <input type="file" style={{ display: 'none' }} onChange={handleImportFilePick} />
                 </label>
-
-                <div style={{ textAlign: 'center', fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0.15rem 0 0.5rem' }}>— או —</div>
-                <textarea
-                  className="form-textarea"
-                  rows={3}
-                  placeholder={t('הדבק/י כאן את הטקסט המוצפן')}
-                  value={importFileName ? '' : importBlob}
-                  onChange={(e) => { setImportBlob(e.target.value.trim()); setImportFileName(''); setImportPreview(null); setImportError(''); }}
-                  style={{ marginBottom: '0.75rem' }}
-                />
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="import-code">{t('קוד הפענוח')}</label>

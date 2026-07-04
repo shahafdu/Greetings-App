@@ -315,6 +315,7 @@ const EN: Record<string, string> = {
   'הורד/י קובץ גיבוי': 'Download backup file',
   'שלח/י את הקובץ בוואטסאפ (כמסמך) או במייל. בצד השני פותחים ומייבאים את הקובץ, ומזינים את הקוד.': 'Send the file on WhatsApp (as a document) or by email. On the other device, open and import the file, then enter the code.',
   'שמור/י את הקובץ ושלח/י אותו. בצד השני מייבאים את הקובץ ומזינים את הקוד.': 'Save the file and send it. On the other device, import the file and enter the code.',
+  'בחר/י קובץ גיבוי': 'Choose backup file',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);
