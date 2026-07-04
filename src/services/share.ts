@@ -71,7 +71,11 @@ export const encryptEvents = async (
 };
 
 export const decryptEvents = async (blob: string, code: string): Promise<DecryptedBundle> => {
-  const parts = blob.trim().split('.');
+  // Messaging apps (esp. from an RTL app) can inject whitespace and invisible bidi/zero-width
+  // marks around pasted text, which would break the base64 decode. Strip anything that isn't
+  // part of the format (base64 chars + the '.' separators).
+  const clean = (blob || '').replace(/[^A-Za-z0-9+/=.]/g, '');
+  const parts = clean.split('.');
   if (parts.length !== 4 || parts[0] !== SHARE_MAGIC) throw new Error('קובץ שיתוף לא תקין.');
   const [, saltB64, ivB64, ctB64] = parts;
   const key = await deriveKey(code.trim().toUpperCase(), fromB64(saltB64));
