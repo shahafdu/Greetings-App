@@ -3014,6 +3014,9 @@ export default function App() {
                 {importPreview ? (
                   <>
                     <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: '0.5rem 0' }}>{t('נמצאו')} {importPreview.length} {t('אירועים')}:</p>
+                    <p style={{ fontSize: '0.82rem', fontWeight: 700, color: importSettings ? 'var(--success)' : 'var(--text-muted)', margin: '0 0 0.5rem' }}>
+                      {importSettings ? `✓ ${t('הגיבוי כולל גם הגדרות ומפתחות')}` : t('גיבוי אירועים בלבד (ללא הגדרות)')}
+                    </p>
                     <div style={{ maxHeight: '35vh', overflowY: 'auto', marginBottom: '1rem' }}>
                       {importPreview.map((ev, i) => (
                         <div key={i} style={{ padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
