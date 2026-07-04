@@ -288,6 +288,19 @@ const EN: Record<string, string> = {
   'ברכה עבור': 'Greeting for',
   'שנים': 'years',
   'יצירת ברכה חכמה ללא שמירה': 'Create a smart greeting without saving',
+  'הברכה תופיע כאן וניתנת לעריכה לפני שליחה. מלא/י את הפרטים ולחץ/י "ייצר ברכה".': 'The greeting will appear here and can be edited before sending. Fill in the details and tap "Generate".',
+  'למחוק את האירוע של': 'Delete the event of',
+  'היכנס/י ל-': 'Go to ',
+  'והתחבר/י עם חשבון Google.': 'and sign in with your Google account.',
+  'לחץ/י על': 'Click',
+  ', העתק/י את המפתח והדבק/י אותו כאן.': ', copy the key and paste it here.',
+  'אם מתקבלת שגיאת מכסה (429) — נסה/י מודל אחר, או עבור/י ל-Groq / OpenRouter למעלה.': 'If you get a quota error (429), try another model, or switch to Groq / OpenRouter above.',
+  'והתחבר/י (חינם, אפשר עם חשבון Google).': 'and sign in (free, works with a Google account).',
+  ', העתק/י את המפתח (מתחיל ב-': ', copy the key (starts with ',
+  ') והדבק/י אותו כאן.': ') and paste it here.',
+  'לחץ/י "בדוק/י מפתח" כדי לוודא שהכול עובד. Groq חינמי לחלוטין.': 'Tap "Test key" to confirm it works. Groq is completely free.',
+  'בחר/י מודל': 'Pick a',
+  'ולחץ/י "בדוק/י מפתח". לדגמים החינמיים יש מגבלת קצב.': 'model and tap "Test key". Free models are rate-limited.',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

@@ -283,9 +283,13 @@ export default function App() {
     (async () => {
       const { App } = await import('@capacitor/app');
       const handle = await App.addListener('backButton', () => {
-        if (showEventForm) { handleCloseEventForm(); return; }
+        // Close inner/overlay modals first (they open ON TOP of the event form), so back
+        // returns to the form rather than closing it and leaving the modal stuck.
         if (showContactsModal) { setShowContactsModal(false); return; }
         if (showGreetingModal) { setShowGreetingModal(false); return; }
+        if (showShareModal) { setShowShareModal(false); return; }
+        if (showImportModal) { setShowImportModal(false); return; }
+        if (showEventForm) { handleCloseEventForm(); return; }
         if (selectedDay) { setSelectedDay(null); return; }
         if (activeTab !== 'list') { setActiveTab('list'); return; }
         App.exitApp();
@@ -293,7 +297,7 @@ export default function App() {
       remove = () => { handle.remove(); };
     })();
     return () => { if (remove) remove(); };
-  }, [showEventForm, showContactsModal, showGreetingModal, selectedDay, activeTab]);
+  }, [showEventForm, showContactsModal, showGreetingModal, showShareModal, showImportModal, selectedDay, activeTab]);
 
   // Check GitHub Releases for a newer build on every launch (no-ops while the repo is private).
   useEffect(() => {
@@ -873,7 +877,7 @@ export default function App() {
 
   // Delete Person
   const handleDeletePerson = (id: string, name: string) => {
-    if (window.confirm(`האם אתה בטוח שברצונך למחוק את האירוע של ${name}?`)) {
+    if (window.confirm(`${t('למחוק את האירוע של')} ${name}?`)) {
       deletePerson(id);
       refreshPeopleList();
     }
@@ -2335,7 +2339,7 @@ export default function App() {
                   className="greeting-edit-textarea"
                   value={greetingText}
                   onChange={(e) => setGreetingText(e.target.value)}
-                  placeholder='הברכה תופיע כאן וניתנת לעריכה ידנית לפני העתקה / שליחה. מלא/י את הפרטים ולחץ/י על "ייצר ברכה".'
+                  placeholder={t('הברכה תופיע כאן וניתנת לעריכה לפני שליחה. מלא/י את הפרטים ולחץ/י "ייצר ברכה".')}
                   dir="rtl"
                 />
               )}
@@ -2481,8 +2485,8 @@ export default function App() {
                 value={settings.language || 'he'}
                 onChange={(e) => setLocalSettings({ ...settings, language: e.target.value as 'he' | 'en' })}
               >
-                <option value="he">{t('עברית')}</option>
-                <option value="en">{t('אנגלית')}</option>
+                <option value="he">עברית</option>
+                <option value="en">English</option>
               </select>
             </div>
 
@@ -2791,7 +2795,7 @@ export default function App() {
               )}
 
               <div style={{ display: 'flex', gap: '0.75rem', marginTop: '2rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>ההגדרות נשמרות אוטומטית ✓</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('ההגדרות נשמרות אוטומטית ✓')}</span>
                 <button
                   type="button"
                   className="btn btn-secondary"
@@ -2832,30 +2836,32 @@ export default function App() {
               )}
             </form>
 
+            {settings.aiProvider !== 'proxy' && (
             <div style={{ marginTop: '3rem', padding: '1rem', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', background: 'rgba(255,255,255,0.01)' }}>
               <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.5rem' }}>{t('איך משיגים מפתח API בחינם?')}</h3>
               {(settings.aiProvider || 'gemini') === 'gemini' && (
                 <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <li>כנס לאתר <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Google AI Studio</a> והתחבר עם חשבון הגוגל שלך.</li>
-                  <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח שנוצר והדבק אותו כאן.</li>
-                  <li>אם מתקבלת שגיאת מכסה (429) — נסה/י מודל אחר, או עבור/י ל-Groq / OpenRouter למעלה.</li>
+                  <li>{t('היכנס/י ל-')}<a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Google AI Studio</a> {t('והתחבר/י עם חשבון Google.')}</li>
+                  <li>{t('לחץ/י על')} <strong>Create API Key</strong>{t(', העתק/י את המפתח והדבק/י אותו כאן.')}</li>
+                  <li>{t('אם מתקבלת שגיאת מכסה (429) — נסה/י מודל אחר, או עבור/י ל-Groq / OpenRouter למעלה.')}</li>
                 </ol>
               )}
               {settings.aiProvider === 'groq' && (
                 <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <li>כנס לאתר <a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Groq Console</a> והתחבר (חינם, ניתן עם חשבון Google).</li>
-                  <li>לחץ על <strong>Create API Key</strong>, העתק את המפתח (מתחיל ב-<span className="numbers-font">gsk_</span>) והדבק אותו כאן.</li>
-                  <li>לחץ/י "בדוק/י מפתח" כדי לוודא שהכול עובד. Groq חינמי לחלוטין.</li>
+                  <li>{t('היכנס/י ל-')}<a href="https://console.groq.com/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>Groq Console</a> {t('והתחבר/י (חינם, אפשר עם חשבון Google).')}</li>
+                  <li>{t('לחץ/י על')} <strong>Create API Key</strong>{t(', העתק/י את המפתח (מתחיל ב-')}<span className="numbers-font">gsk_</span>{t(') והדבק/י אותו כאן.')}</li>
+                  <li>{t('לחץ/י "בדוק/י מפתח" כדי לוודא שהכול עובד. Groq חינמי לחלוטין.')}</li>
                 </ol>
               )}
               {settings.aiProvider === 'openrouter' && (
                 <ol style={{ paddingRight: '1.25rem', fontSize: '0.9rem', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  <li>כנס לאתר <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>OpenRouter</a> והתחבר (חינם, ניתן עם חשבון Google).</li>
-                  <li>לחץ על <strong>Create Key</strong>, העתק את המפתח (מתחיל ב-<span className="numbers-font">sk-or-</span>) והדבק אותו כאן.</li>
-                  <li>בחר/י מודל <strong>:free</strong> (כמו gemma-3-27b) ולחץ/י "בדוק/י מפתח". לדגמים החינמיים יש מגבלת קצב.</li>
+                  <li>{t('היכנס/י ל-')}<a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" style={{ color: 'var(--secondary)' }}>OpenRouter</a> {t('והתחבר/י (חינם, אפשר עם חשבון Google).')}</li>
+                  <li>{t('לחץ/י על')} <strong>Create Key</strong>{t(', העתק/י את המפתח (מתחיל ב-')}<span className="numbers-font">sk-or-</span>{t(') והדבק/י אותו כאן.')}</li>
+                  <li>{t('בחר/י מודל')} <strong>:free</strong> {t('ולחץ/י "בדוק/י מפתח". לדגמים החינמיים יש מגבלת קצב.')}</li>
                 </ol>
               )}
             </div>
+            )}
           </section>
         )}
       </main>
@@ -3149,7 +3155,7 @@ export default function App() {
                   className="greeting-edit-textarea"
                   value={greetingText}
                   onChange={(e) => setGreetingText(e.target.value)}
-                  placeholder='הברכה תופיע כאן וניתנת לעריכה ידנית לפני העתקה / שליחה. מלא/י את הפרטים ולחץ/י על "ייצר ברכה".'
+                  placeholder={t('הברכה תופיע כאן וניתנת לעריכה לפני שליחה. מלא/י את הפרטים ולחץ/י "ייצר ברכה".')}
                   dir="rtl"
                 />
               )}
