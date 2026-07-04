@@ -2963,8 +2963,10 @@ export default function App() {
                   </button>
                   <button type="button" className="icon-btn" title={t('העתק קוד')} onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
                 </div>
-                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
-                  {t('💡 לוואטסאפ עדיף "כטקסט"; למייל — "כקובץ".')}
+                <p style={{ fontSize: '0.78rem', color: shareBlob.length > 3000 ? 'var(--danger, #ff5c5c)' : 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
+                  {shareBlob.length > 3000
+                    ? t('⚠️ גיבוי גדול — שלח/י כקובץ. שיתוף כטקסט עלול להיחתך באמצע ולא לעבוד.')
+                    : t('💡 לוואטסאפ עדיף "כטקסט"; למייל — "כקובץ".')}
                 </p>
               </>
             )}

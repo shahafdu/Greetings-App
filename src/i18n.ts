@@ -309,6 +309,8 @@ const EN: Record<string, string> = {
   'שחזר גם הגדרות ומפתחות מהגיבוי': 'Also restore settings & keys from the backup',
   'הגיבוי כולל גם הגדרות ומפתחות': 'This backup also includes settings & keys',
   'גיבוי אירועים בלבד (ללא הגדרות)': 'Events only (no settings)',
+  '⚠️ גיבוי גדול — שלח/י כקובץ. שיתוף כטקסט עלול להיחתך באמצע ולא לעבוד.': '⚠️ Large backup — send it as a FILE. Sharing as text may get cut off and fail.',
+  'הטקסט חלקי — כנראה נחתך בשיתוף. השתמש/י בקובץ הגיבוי במקום הדבקת טקסט.': 'The text is incomplete — it was likely cut off when shared. Use the backup FILE instead of pasting text.',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

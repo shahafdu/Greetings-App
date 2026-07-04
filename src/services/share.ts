@@ -23,7 +23,11 @@ const toB64 = (buf: ArrayBuffer | Uint8Array): string => {
   for (const b of bytes) bin += String.fromCharCode(b);
   return btoa(bin);
 };
-const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const fromB64 = (s: string): Uint8Array => {
+  const noPad = s.replace(/=+$/, '');
+  const padded = noPad + '='.repeat((4 - (noPad.length % 4)) % 4); // tolerate lost padding
+  return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+};
 
 const deriveKey = async (code: string, salt: Uint8Array): Promise<CryptoKey> => {
   const baseKey = await crypto.subtle.importKey('raw', encoder.encode(code), 'PBKDF2', false, ['deriveKey']);
@@ -77,6 +81,13 @@ export const decryptEvents = async (blob: string, code: string): Promise<Decrypt
   const clean = (blob || '').replace(/[^A-Za-z0-9+/=.]/g, '');
   const parts = clean.split('.');
   if (parts.length !== 4 || parts[0] !== SHARE_MAGIC) throw new Error('קובץ שיתוף לא תקין.');
+  // Valid base64 never has a segment length ≡ 1 (mod 4). If it does, the text was cut off
+  // mid-way (messaging apps can truncate long pasted text) — tell the user to use the file.
+  for (const seg of parts.slice(1)) {
+    if (seg.replace(/=+$/, '').length % 4 === 1) {
+      throw new Error('הטקסט חלקי — כנראה נחתך בשיתוף. השתמש/י בקובץ הגיבוי במקום הדבקת טקסט.');
+    }
+  }
   const [, saltB64, ivB64, ctB64] = parts;
   const key = await deriveKey(code.trim().toUpperCase(), fromB64(saltB64));
   let pt: ArrayBuffer;
