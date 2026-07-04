@@ -783,17 +783,6 @@ export default function App() {
     }
   };
 
-  // Share the encrypted bundle as TEXT (best for WhatsApp — sent as a normal message, no file
-  // to save/find). On web, copy it to the clipboard.
-  const handleShareAsText = async () => {
-    if (Capacitor.isNativePlatform()) {
-      const { Share } = await import('@capacitor/share');
-      await Share.share({ text: shareBlob, dialogTitle: 'שיתוף אירועים' });
-    } else {
-      await navigator.clipboard?.writeText(shareBlob);
-    }
-  };
-
   const openImportModal = () => {
     setImportBlob('');
     setImportFileName('');
@@ -2954,19 +2943,16 @@ export default function App() {
                 <div style={{ textAlign: 'center', fontSize: '1.8rem', fontWeight: 800, letterSpacing: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', fontFamily: 'var(--font-numbers)' }}>
                   {shareCode}
                 </div>
-                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                  <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: '140px' }} onClick={handleShareAsText}>
-                    <Share2 size={16} /> <span>{Capacitor.isNativePlatform() ? t('שתף/י כטקסט (וואטסאפ)') : t('העתק/י טקסט מוצפן')}</span>
-                  </button>
-                  <button type="button" className="btn btn-secondary" style={{ flex: 1, minWidth: '140px' }} onClick={handleSendShareFile}>
-                    <FileText size={16} /> <span>{Capacitor.isNativePlatform() ? t('שתף/י כקובץ (מייל)') : t('הורד/י קובץ')}</span>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                  <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: '160px' }} onClick={handleSendShareFile}>
+                    <FileText size={16} /> <span>{Capacitor.isNativePlatform() ? t('שתף/י קובץ גיבוי') : t('הורד/י קובץ גיבוי')}</span>
                   </button>
                   <button type="button" className="icon-btn" title={t('העתק קוד')} onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
                 </div>
-                <p style={{ fontSize: '0.78rem', color: shareBlob.length > 3000 ? 'var(--danger, #ff5c5c)' : 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
-                  {shareBlob.length > 3000
-                    ? t('⚠️ גיבוי גדול — שלח/י כקובץ. שיתוף כטקסט עלול להיחתך באמצע ולא לעבוד.')
-                    : t('💡 לוואטסאפ עדיף "כטקסט"; למייל — "כקובץ".')}
+                <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
+                  {Capacitor.isNativePlatform()
+                    ? t('שלח/י את הקובץ בוואטסאפ (כמסמך) או במייל. בצד השני פותחים ומייבאים את הקובץ, ומזינים את הקוד.')
+                    : t('שמור/י את הקובץ ושלח/י אותו. בצד השני מייבאים את הקובץ ומזינים את הקוד.')}
                 </p>
               </>
             )}

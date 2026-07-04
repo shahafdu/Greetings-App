@@ -311,6 +311,10 @@ const EN: Record<string, string> = {
   'גיבוי אירועים בלבד (ללא הגדרות)': 'Events only (no settings)',
   '⚠️ גיבוי גדול — שלח/י כקובץ. שיתוף כטקסט עלול להיחתך באמצע ולא לעבוד.': '⚠️ Large backup — send it as a FILE. Sharing as text may get cut off and fail.',
   'הטקסט חלקי — כנראה נחתך בשיתוף. השתמש/י בקובץ הגיבוי במקום הדבקת טקסט.': 'The text is incomplete — it was likely cut off when shared. Use the backup FILE instead of pasting text.',
+  'שתף/י קובץ גיבוי': 'Share backup file',
+  'הורד/י קובץ גיבוי': 'Download backup file',
+  'שלח/י את הקובץ בוואטסאפ (כמסמך) או במייל. בצד השני פותחים ומייבאים את הקובץ, ומזינים את הקוד.': 'Send the file on WhatsApp (as a document) or by email. On the other device, open and import the file, then enter the code.',
+  'שמור/י את הקובץ ושלח/י אותו. בצד השני מייבאים את הקובץ ומזינים את הקוד.': 'Save the file and send it. On the other device, import the file and enter the code.',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

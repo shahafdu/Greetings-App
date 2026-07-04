@@ -85,11 +85,13 @@ birthday.
 
 ## Sharing / backing up events
 **Settings → Share & back up events**:
-1. Pick the events to share → **Create encrypted file**. The app shows a **6‑character code**.
-2. Send the bundle — **as text** (best for WhatsApp) or **as a file** (best for email). **Send the
-   code separately** (that's what keeps it private).
-3. On the other device: **Settings → Import events** → paste the text (or pick the file) → enter the
-   code → **preview** → **Import & merge** (duplicates are skipped).
+1. Pick the events to share (tick **Include settings & keys** for a full backup) → **Create
+   encrypted file**. The app shows a **6‑character code**.
+2. **Share the file** — on WhatsApp it's sent as a **document**, or attach it to an email. **Send the
+   code separately** (that's what keeps it private). Files transfer intact at any size; pasted text
+   isn't used because messengers can truncate long messages.
+3. On the other device: **Settings → Import events** → **pick the file** → enter the code →
+   **preview** → **Import & merge** (duplicates skipped; tick **restore settings** for a full backup).
 
 Use it to move to a new phone/tablet, or to give your whole list to a family member.
 
