@@ -3,7 +3,15 @@
 // code (sent out-of-band) to decrypt and merge. Device-specific fields are stripped so events
 // migrate cleanly to another device or person (a phone number is plain, portable data).
 
-import type { Person } from './storage';
+import type { Person, AppSettings } from './storage';
+
+// Settings safe to carry in a full backup (AI keys + preferences). The Google sign-in session is
+// intentionally excluded — you re-connect Google on the new device.
+export const pickBackupSettings = (s: AppSettings): Partial<AppSettings> => {
+  const { useGoogleAuth: _a, googleUserEmail: _b, googleUserName: _c, ...rest } = s;
+  void _a; void _b; void _c;
+  return rest;
+};
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -44,8 +52,15 @@ const toPortable = (p: Person): PortableEvent => {
   return rest;
 };
 
-export const encryptEvents = async (events: Person[], code: string): Promise<string> => {
-  const payload = JSON.stringify({ v: 1, events: events.map(toPortable) });
+export interface DecryptedBundle {
+  events: PortableEvent[];
+  settings?: Partial<AppSettings>; // present only in a full backup
+}
+
+export const encryptEvents = async (
+  events: Person[], code: string, settings?: Partial<AppSettings>
+): Promise<string> => {
+  const payload = JSON.stringify({ v: 1, events: events.map(toPortable), settings });
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(code, salt);
@@ -55,7 +70,7 @@ export const encryptEvents = async (events: Person[], code: string): Promise<str
   return `${SHARE_MAGIC}.${toB64(salt)}.${toB64(iv)}.${toB64(ct)}`;
 };
 
-export const decryptEvents = async (blob: string, code: string): Promise<PortableEvent[]> => {
+export const decryptEvents = async (blob: string, code: string): Promise<DecryptedBundle> => {
   const parts = blob.trim().split('.');
   if (parts.length !== 4 || parts[0] !== SHARE_MAGIC) throw new Error('קובץ שיתוף לא תקין.');
   const [, saltB64, ivB64, ctB64] = parts;
@@ -68,6 +83,6 @@ export const decryptEvents = async (blob: string, code: string): Promise<Portabl
   } catch {
     throw new Error('הקוד שגוי או שהקובץ פגום.');
   }
-  const data = JSON.parse(decoder.decode(pt)) as { events?: PortableEvent[] };
-  return data.events || [];
+  const data = JSON.parse(decoder.decode(pt)) as { events?: PortableEvent[]; settings?: Partial<AppSettings> };
+  return { events: data.events || [], settings: data.settings };
 };

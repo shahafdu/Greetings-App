@@ -64,7 +64,7 @@ import type { AiProvider } from './services/storage';
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
 import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel, dayGematriya } from './services/hebrewDate';
 import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
-import { generateShareCode, encryptEvents, decryptEvents, type PortableEvent } from './services/share';
+import { generateShareCode, encryptEvents, decryptEvents, pickBackupSettings, type PortableEvent } from './services/share';
 import { t, setLang } from './i18n';
 import { scheduleEventNotifications } from './services/notifications';
 import {
@@ -166,11 +166,14 @@ export default function App() {
   const [shareSelectedIds, setShareSelectedIds] = useState<Set<string>>(new Set());
   const [shareCode, setShareCode] = useState('');
   const [shareBlob, setShareBlob] = useState('');
+  const [shareIncludeSettings, setShareIncludeSettings] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [importBlob, setImportBlob] = useState('');
   const [importFileName, setImportFileName] = useState('');
   const [importCode, setImportCode] = useState('');
   const [importPreview, setImportPreview] = useState<PortableEvent[] | null>(null);
+  const [importSettings, setImportSettings] = useState<Partial<AppSettings> | null>(null);
+  const [importRestoreSettings, setImportRestoreSettings] = useState(true);
   const [importError, setImportError] = useState('');
   const [importDone, setImportDone] = useState(0);
 
@@ -742,6 +745,7 @@ export default function App() {
     setShareSelectedIds(new Set(people.map(p => p.id))); // default: all selected
     setShareCode('');
     setShareBlob('');
+    setShareIncludeSettings(false); // off by default so sharing to others never leaks keys
     setShowShareModal(true);
   };
 
@@ -757,7 +761,7 @@ export default function App() {
     const selected = people.filter(p => shareSelectedIds.has(p.id));
     if (selected.length === 0) return;
     const code = generateShareCode();
-    setShareBlob(await encryptEvents(selected, code));
+    setShareBlob(await encryptEvents(selected, code, shareIncludeSettings ? pickBackupSettings(settings) : undefined));
     setShareCode(code);
   };
 
@@ -795,6 +799,8 @@ export default function App() {
     setImportFileName('');
     setImportCode('');
     setImportPreview(null);
+    setImportSettings(null);
+    setImportRestoreSettings(true);
     setImportError('');
     setImportDone(0);
     setShowImportModal(true);
@@ -806,15 +812,20 @@ export default function App() {
     setImportFileName(file.name);
     setImportBlob((await file.text()).trim());
     setImportPreview(null);
+    setImportSettings(null);
     setImportError('');
   };
 
   const handleDecryptImport = async () => {
     setImportError('');
     try {
-      setImportPreview(await decryptEvents(importBlob, importCode));
+      const bundle = await decryptEvents(importBlob, importCode);
+      setImportPreview(bundle.events);
+      setImportSettings(bundle.settings || null);
+      setImportRestoreSettings(!!bundle.settings);
     } catch (err) {
       setImportPreview(null);
+      setImportSettings(null);
       setImportError(err instanceof Error ? err.message : 'שגיאה בפענוח.');
     }
   };
@@ -831,6 +842,12 @@ export default function App() {
       existing.add(key(ev));
       added++;
     });
+    // Full backup: optionally restore settings/keys (keeping this device's Google session).
+    if (importSettings && importRestoreSettings) {
+      const merged = { ...settings, ...importSettings } as AppSettings;
+      setLocalSettings(merged);
+      saveSettings(merged);
+    }
     refreshPeopleList();
     setImportDone(added);
     setImportPreview(null);
@@ -2921,6 +2938,10 @@ export default function App() {
                     </label>
                   ))}
                 </div>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.25rem 0 0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={shareIncludeSettings} onChange={(e) => setShareIncludeSettings(e.target.checked)} />
+                  <span>{t('כלול הגדרות ומפתחות API (גיבוי מלא — לא לשיתוף עם אחרים)')}</span>
+                </label>
                 <button type="button" className="btn btn-primary" onClick={handleGenerateShare} disabled={shareSelectedIds.size === 0}>
                   {t('צור קובץ מוצפן')} ({shareSelectedIds.size})
                 </button>
@@ -2996,10 +3017,16 @@ export default function App() {
                     <div style={{ maxHeight: '35vh', overflowY: 'auto', marginBottom: '1rem' }}>
                       {importPreview.map((ev, i) => (
                         <div key={i} style={{ padding: '0.4rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.9rem' }}>
-                          {getOccasionEmoji(ev.occasion)} {ev.firstName} {ev.lastName || ''} · <span style={{ color: 'var(--text-secondary)' }}>{ev.occasion}</span>
+                          {getOccasionEmoji(ev.occasion)} {ev.firstName} {ev.lastName || ''} · <span style={{ color: 'var(--text-secondary)' }}>{t(ev.occasion)}</span>
                         </div>
                       ))}
                     </div>
+                    {importSettings && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={importRestoreSettings} onChange={(e) => setImportRestoreSettings(e.target.checked)} />
+                        <span>{t('שחזר גם הגדרות ומפתחות מהגיבוי')}</span>
+                      </label>
+                    )}
                     <button type="button" className="btn btn-primary" onClick={handleConfirmImport}>{t('ייבא/י ומזג/י')}</button>
                   </>
                 ) : (

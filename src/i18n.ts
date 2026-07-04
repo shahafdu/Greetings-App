@@ -305,6 +305,8 @@ const EN: Record<string, string> = {
   'השם שלך בעברית (לחתימת הברכה)': 'Your name in Hebrew (for the signature)',
   'השם שלך באנגלית': 'Your name in English',
   'אם תזין/י שם, הברכות ייחתמו בו (לפי שפת הברכה). השאר/י ריק לברכה ללא חתימה.': 'If you enter a name, greetings are signed with it (per the greeting language). Leave empty for no signature.',
+  'כלול הגדרות ומפתחות API (גיבוי מלא — לא לשיתוף עם אחרים)': 'Include settings & API keys (full backup — not for sharing with others)',
+  'שחזר גם הגדרות ומפתחות מהגיבוי': 'Also restore settings & keys from the backup',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);
