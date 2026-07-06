@@ -2131,21 +2131,21 @@ export default function App() {
               {renderCalendarCells()}
             </div>
 
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', gap: '1.5rem', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--accent)' }}></span>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1.2rem', justifyContent: 'center', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--accent)', flexShrink: 0 }}></span>
                 <span>{t('בן/בת זוג')}</span>
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)' }}></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--primary)', flexShrink: 0 }}></span>
                 <span>{t('משפחה')}</span>
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--secondary)' }}></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: 'var(--secondary)', flexShrink: 0 }}></span>
                 <span>{t('חברים ואחרים')}</span>
               </span>
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <span style={{ width: '10px', height: '10px', borderRadius: '3px', border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)' }}></span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', minWidth: 0 }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '3px', border: '1px dashed var(--secondary)', background: 'rgba(56, 189, 248, 0.12)', flexShrink: 0 }}></span>
                 <span>{t('אירוע מהיומן (הקש על היום)')}</span>
               </span>
             </div>
@@ -2544,20 +2544,20 @@ export default function App() {
               </p>
 
               {settings.useGoogleAuth ? (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0, 230, 118, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--success)' }}>
-                  <div>
-                    <div style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.75rem', background: 'rgba(0, 230, 118, 0.08)', padding: '1rem', borderRadius: '8px', border: '1px solid var(--success)' }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 'bold', color: 'var(--success)', fontSize: '0.9rem', display: 'flex', alignItems: 'center', gap: '0.3rem', flexWrap: 'wrap' }}>
                       <CheckCircle size={16} />
                       <span>{t('מחובר בהצלחה עם Google')}</span>
                     </div>
-                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
+                    <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', marginTop: '0.25rem', wordBreak: 'break-word' }}>
                       שם: {settings.googleUserName} ({settings.googleUserEmail})
                     </div>
                   </div>
-                  <button 
+                  <button
                     onClick={handleGoogleLogout}
-                    className="btn btn-secondary" 
-                    style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.8rem' }}
+                    className="btn btn-secondary"
+                    style={{ width: 'auto', padding: '0.4rem 0.8rem', fontSize: '0.8rem', flexShrink: 0 }}
                   >
                     <LogOut size={14} />
                     <span>{t('התנתק')}</span>
