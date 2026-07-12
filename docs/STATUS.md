@@ -20,6 +20,14 @@ The **web app is feature-complete and stable** for the web/Windows phase. Next m
   custom instructions; **inline editing** of the greeting; **proxy delivery** (greet via a third
   party / family group); **sender-name signature**; sender+recipient gender grammar. Falls back to
   built-in Hebrew templates with no key.
+- **Greeting drafts**: save an edited greeting as a **draft on an event** (multiple per event) and
+  reload it later; the quick generator has its own **standalone drafts list** (save/load/delete,
+  no auto-restore). Saved event drafts are fed back to the AI as **style examples** on the next
+  generation. Drafts are opt-in for export/import (off by default). Delete supported everywhere.
+- **AI guardrails** (`services/aiGuard.ts`): client-side rate limits (per minute/hour/day) on real
+  AI calls, a length cap on user free-text, and prompt hardening so custom instructions can only
+  personalize a greeting (not repurpose the model). On a rate-limit trip the template fallback is
+  shown with an explanatory note. (The shared proxy should still enforce the real server-side cap.)
 - **WhatsApp**: send via `wa.me` (click-to-send, pre-filled text).
 - **App Lock**: opt-in passphrase AES-GCM encryption of all data at rest. Self-healing storage.
 

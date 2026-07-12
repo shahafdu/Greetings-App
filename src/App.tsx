@@ -26,10 +26,12 @@ import {
   Share2,
   CheckCircle,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Save,
+  Bookmark
 } from 'lucide-react';
 
-import type { Person, AppSettings } from './services/storage';
+import type { Person, AppSettings, GreetingDraft, QuickDraft } from './services/storage';
 import {
   getPeople,
   addPerson,
@@ -37,6 +39,12 @@ import {
   deletePerson,
   getSettings,
   saveSettings,
+  addPersonDraft,
+  deletePersonDraft,
+  getQuickDrafts,
+  addQuickDraft,
+  deleteQuickDraft,
+  mergeQuickDrafts,
   initStorage,
   unlockStorage,
   enableLock,
@@ -62,6 +70,7 @@ import {
 import type { AiProvider } from './services/storage';
 
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
+import { MAX_CUSTOM_INSTRUCTION_LEN } from './services/aiGuard';
 import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel, dayGematriya } from './services/hebrewDate';
 import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
 import { generateShareCode, encryptEvents, decryptEvents, pickBackupSettings, type PortableEvent } from './services/share';
@@ -167,6 +176,7 @@ export default function App() {
   const [shareCode, setShareCode] = useState('');
   const [shareBlob, setShareBlob] = useState('');
   const [shareIncludeSettings, setShareIncludeSettings] = useState(false);
+  const [shareIncludeDrafts, setShareIncludeDrafts] = useState(false); // off by default (drafts are personal)
   const [showImportModal, setShowImportModal] = useState(false);
   const [importBlob, setImportBlob] = useState('');
   const [importFileName, setImportFileName] = useState('');
@@ -174,6 +184,9 @@ export default function App() {
   const [importPreview, setImportPreview] = useState<PortableEvent[] | null>(null);
   const [importSettings, setImportSettings] = useState<Partial<AppSettings> | null>(null);
   const [importRestoreSettings, setImportRestoreSettings] = useState(true);
+  const [importQuickDrafts, setImportQuickDrafts] = useState<QuickDraft[] | null>(null);
+  const [importHasDrafts, setImportHasDrafts] = useState(false); // bundle carries drafts (event or quick)
+  const [importRestoreDrafts, setImportRestoreDrafts] = useState(true);
   const [importError, setImportError] = useState('');
   const [importDone, setImportDone] = useState(0);
 
@@ -192,6 +205,11 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [greetingError, setGreetingError] = useState('');
   const [copyFeedback, setCopyFeedback] = useState(false);
+  // Drafts (Features 1, 2, 4). Event drafts belong to the open greetingPerson; quick drafts are
+  // a standalone list. draftFeedback flashes a brief "saved" confirmation after a save.
+  const [personDrafts, setPersonDrafts] = useState<GreetingDraft[]>([]);
+  const [quickDrafts, setQuickDrafts] = useState<QuickDraft[]>([]);
+  const [draftFeedback, setDraftFeedback] = useState('');
 
   // On-Demand Quick Generator Mode State (Feature 2)
   const [isQuickMode, setIsQuickMode] = useState(false);
@@ -264,6 +282,7 @@ export default function App() {
   // Load initial data
   useEffect(() => {
     refreshPeopleList();
+    setQuickDrafts(getQuickDrafts());
     setLocalSettings(getSettings());
 
     // Restore a saved OAuth access token so the Google connection persists across
@@ -641,6 +660,7 @@ export default function App() {
       setUnlockInput('');
       setLockState('unlocked');
       refreshPeopleList();
+      setQuickDrafts(getQuickDrafts());
       setLocalSettings(getSettings());
     } else {
       setUnlockError('סיסמה שגויה. נסה/י שוב.');
@@ -659,6 +679,7 @@ export default function App() {
     if (ok) {
       setLockState('unlocked');
       refreshPeopleList();
+      setQuickDrafts(getQuickDrafts());
       setLocalSettings(getSettings());
     } else {
       setUnlockError('האימות הצליח אך פתיחת הנתונים נכשלה.');
@@ -746,6 +767,7 @@ export default function App() {
     setShareCode('');
     setShareBlob('');
     setShareIncludeSettings(false); // off by default so sharing to others never leaks keys
+    setShareIncludeDrafts(false);   // off by default — drafts are personal
     setShowShareModal(true);
   };
 
@@ -761,7 +783,12 @@ export default function App() {
     const selected = people.filter(p => shareSelectedIds.has(p.id));
     if (selected.length === 0) return;
     const code = generateShareCode();
-    setShareBlob(await encryptEvents(selected, code, shareIncludeSettings ? pickBackupSettings(settings) : undefined));
+    setShareBlob(await encryptEvents(
+      selected,
+      code,
+      shareIncludeSettings ? pickBackupSettings(settings) : undefined,
+      { includeDrafts: shareIncludeDrafts, quickDrafts: shareIncludeDrafts ? quickDrafts : [] }
+    ));
     setShareCode(code);
   };
 
@@ -790,6 +817,9 @@ export default function App() {
     setImportPreview(null);
     setImportSettings(null);
     setImportRestoreSettings(true);
+    setImportQuickDrafts(null);
+    setImportHasDrafts(false);
+    setImportRestoreDrafts(true);
     setImportError('');
     setImportDone(0);
     setShowImportModal(true);
@@ -802,6 +832,8 @@ export default function App() {
     setImportBlob((await file.text()).trim());
     setImportPreview(null);
     setImportSettings(null);
+    setImportQuickDrafts(null);
+    setImportHasDrafts(false);
     setImportError('');
   };
 
@@ -812,9 +844,17 @@ export default function App() {
       setImportPreview(bundle.events);
       setImportSettings(bundle.settings || null);
       setImportRestoreSettings(!!bundle.settings);
+      const quickDraftsIn = bundle.quickDrafts || [];
+      const eventDraftsCount = bundle.events.reduce((n, e) => n + ((e as Person).drafts?.length || 0), 0);
+      setImportQuickDrafts(quickDraftsIn);
+      const hasDrafts = quickDraftsIn.length > 0 || eventDraftsCount > 0;
+      setImportHasDrafts(hasDrafts);
+      setImportRestoreDrafts(hasDrafts);
     } catch (err) {
       setImportPreview(null);
       setImportSettings(null);
+      setImportQuickDrafts(null);
+      setImportHasDrafts(false);
       setImportError(err instanceof Error ? err.message : 'שגיאה בפענוח.');
     }
   };
@@ -827,7 +867,9 @@ export default function App() {
     let added = 0;
     importPreview.forEach(ev => {
       if (existing.has(key(ev))) return;
-      addPerson(ev);
+      // Drafts are personal — strip them from incoming events unless the user opted to restore.
+      const { drafts, ...rest } = ev as PortableEvent & { drafts?: GreetingDraft[] };
+      addPerson(importRestoreDrafts ? { ...rest, drafts } : rest);
       existing.add(key(ev));
       added++;
     });
@@ -836,6 +878,11 @@ export default function App() {
       const merged = { ...settings, ...importSettings } as AppSettings;
       setLocalSettings(merged);
       saveSettings(merged);
+    }
+    // Merge any imported quick-generator drafts (de-duplicated by text) when opted in.
+    if (importRestoreDrafts && importQuickDrafts && importQuickDrafts.length) {
+      mergeQuickDrafts(importQuickDrafts);
+      setQuickDrafts(getQuickDrafts());
     }
     refreshPeopleList();
     setImportDone(added);
@@ -929,6 +976,8 @@ export default function App() {
     const lang = settings.language || 'he';
     setIsQuickMode(false);
     setGreetingPerson(person);
+    setPersonDrafts(person.drafts || []);
+    setDraftFeedback('');
     setGreetingTone('normal'); setGreetingLang(lang);
     setCustomGreetingDetails('');
     setGreetingText('');
@@ -937,7 +986,9 @@ export default function App() {
     setIsGenerating(true);
 
     try {
-      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings, lang);
+      // Feed any saved drafts to the AI as style examples (Feature 3).
+      const examples = (person.drafts || []).map(d => d.text);
+      const { text, error } = await generateHebrewBirthdayGreeting(person, 'normal', '', settings, lang, examples);
       setGreetingText(text);
       setGreetingError(error || '');
     } catch (err) {
@@ -1039,7 +1090,9 @@ export default function App() {
 
     setIsGenerating(true);
     try {
-      const { text, error } = await generateHebrewBirthdayGreeting(person, tone, customText, settings, langOverride ?? greetingLang);
+      // For a stored event, reuse its saved drafts as style examples (Feature 3).
+      const examples = !isQuickMode && greetingPerson ? (greetingPerson.drafts || []).map(d => d.text) : [];
+      const { text, error } = await generateHebrewBirthdayGreeting(person, tone, customText, settings, langOverride ?? greetingLang, examples);
       setGreetingText(text);
       setGreetingError(error || '');
     } catch (err) {
@@ -1068,11 +1121,100 @@ export default function App() {
     }
     
     const encodedText = encodeURIComponent(greetingText);
-    const whatsappUrl = phoneNum 
+    const whatsappUrl = phoneNum
       ? `https://wa.me/${phoneNum}?text=${encodedText}`
       : `https://wa.me/?text=${encodedText}`;
-      
+
     window.open(whatsappUrl, '_blank');
+  };
+
+  // Brief "saved" confirmation shown next to a save-draft button.
+  const flashDraftSaved = () => {
+    setDraftFeedback('saved');
+    setTimeout(() => setDraftFeedback(''), 2000);
+  };
+
+  // ---- Drafts: event-attached (Features 1, 4) ----
+
+  // Save the current greeting as a draft on the open event.
+  const handleSaveEventDraft = () => {
+    if (!greetingPerson || !greetingText.trim()) return;
+    const updated = addPersonDraft(greetingPerson.id, {
+      text: greetingText.trim(),
+      tone: greetingTone,
+      lang: greetingLang
+    });
+    if (updated) {
+      setGreetingPerson(updated);
+      setPersonDrafts(updated.drafts || []);
+      refreshPeopleList();
+      flashDraftSaved();
+    }
+  };
+
+  const handleLoadEventDraft = (draft: GreetingDraft) => {
+    setGreetingText(draft.text);
+    if (draft.tone) setGreetingTone(draft.tone);
+    if (draft.lang) setGreetingLang(draft.lang);
+    setGreetingError('');
+  };
+
+  const handleDeleteEventDraft = (draftId: string) => {
+    if (!greetingPerson) return;
+    const updated = deletePersonDraft(greetingPerson.id, draftId);
+    if (updated) {
+      setGreetingPerson(updated);
+      setPersonDrafts(updated.drafts || []);
+      refreshPeopleList();
+    }
+  };
+
+  // ---- Drafts: quick generator standalone list (Features 2, 4) ----
+
+  const handleSaveQuickDraft = () => {
+    if (!greetingText.trim()) return;
+    addQuickDraft({
+      text: greetingText.trim(),
+      tone: greetingTone,
+      lang: greetingLang,
+      firstName: quickFirstName.trim() || 'ללא שם',
+      lastName: quickLastName.trim() || undefined,
+      occasion: quickOccasion,
+      relation: quickRelation,
+      gender: quickGender,
+      years: quickYears,
+      useFirstNameOnly: quickUseFirstNameOnly,
+      viaProxy: quickViaProxy,
+      proxyName: quickViaProxy && quickProxyName.trim() ? quickProxyName.trim() : undefined,
+      proxyGender: quickViaProxy ? quickProxyGender : undefined,
+      celebrantLink: quickViaProxy && quickCelebrantLink.trim() ? quickCelebrantLink.trim() : undefined
+    });
+    setQuickDrafts(getQuickDrafts());
+    flashDraftSaved();
+  };
+
+  // Load a quick draft back into the generator form (does NOT auto-generate — Feature 2).
+  const handleLoadQuickDraft = (draft: QuickDraft) => {
+    setQuickFirstName(draft.firstName || '');
+    setQuickLastName(draft.lastName || '');
+    setQuickOccasion(draft.occasion as Person['occasion']);
+    setQuickRelation(draft.relation || 'חבר/ה');
+    setQuickGender(draft.gender || 'Male');
+    setQuickYears(draft.years || 25);
+    setQuickUseFirstNameOnly(draft.useFirstNameOnly ?? true);
+    setQuickViaProxy(!!draft.viaProxy);
+    setQuickProxyName(draft.proxyName || '');
+    setQuickProxyGender(draft.proxyGender || 'Male');
+    setQuickCelebrantLink(draft.celebrantLink || '');
+    setGreetingText(draft.text);
+    if (draft.tone) setGreetingTone(draft.tone);
+    if (draft.lang) setGreetingLang(draft.lang);
+    setGreetingError('');
+  };
+
+  const handleDeleteQuickDraft = (id: string) => {
+    deleteQuickDraft(id);
+    setQuickDrafts(getQuickDrafts());
   };
 
   // Attach a real Google contact. In the quick generator it fills the quick fields;
@@ -2446,6 +2588,7 @@ export default function App() {
                     <textarea
                       id="custom-instruction"
                       rows={5} /* Increased rows for better visibility */
+                      maxLength={MAX_CUSTOM_INSTRUCTION_LEN}
                       className="form-textarea"
                       style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }}
                       placeholder={t('הוסף בקשה מיוחדת או פרטים לכלול...')}
@@ -2492,6 +2635,62 @@ export default function App() {
                 <span>{t('שלח בוואטסאפ')}</span>
               </button>
             </div>
+
+            {/* Save current greeting as a quick draft (Feature 2) */}
+            <button
+              type="button"
+              className="btn btn-secondary"
+              style={{ width: '100%', marginTop: '1rem' }}
+              onClick={handleSaveQuickDraft}
+              disabled={isGenerating || !greetingText.trim()}
+              id="btn-save-quick-draft"
+            >
+              <Save size={16} />
+              <span>{draftFeedback === 'saved' ? t('נשמר!') : t('שמור טיוטה')}</span>
+            </button>
+
+            {/* Saved quick drafts list (load / delete — Features 2, 4) */}
+            {quickDrafts.length > 0 && (
+              <div style={{ marginTop: '1.5rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1.25rem' }}>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Bookmark size={18} style={{ color: 'var(--primary)' }} />
+                  <span>{t('טיוטות שמורות')} ({quickDrafts.length})</span>
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                  {quickDrafts.map(d => (
+                    <div key={d.id} className="glass-card" style={{ padding: '0.75rem', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <span style={{ fontWeight: 700, color: 'var(--secondary)' }}>{d.firstName}{d.lastName ? ` ${d.lastName}` : ''} • {t(d.occasion)}</span>
+                        <span className="numbers-font">{new Date(d.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, whiteSpace: 'pre-wrap', maxHeight: '4.5em', overflow: 'hidden', lineHeight: '1.5' }} dir={d.lang === 'en' ? 'ltr' : 'rtl'}>
+                        {d.text}
+                      </p>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ flex: 1, padding: '0.35rem 0.7rem', fontSize: '0.78rem' }}
+                          onClick={() => handleLoadQuickDraft(d)}
+                        >
+                          <Import size={13} />
+                          <span>{t('טען טיוטה')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          style={{ color: 'var(--danger, #ff5c5c)' }}
+                          title={t('מחק טיוטה')}
+                          onClick={() => handleDeleteQuickDraft(d.id)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
         )}
 
@@ -2927,9 +3126,13 @@ export default function App() {
                     </label>
                   ))}
                 </div>
-                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.25rem 0 0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.25rem 0 0.5rem', fontSize: '0.85rem', cursor: 'pointer' }}>
                   <input type="checkbox" checked={shareIncludeSettings} onChange={(e) => setShareIncludeSettings(e.target.checked)} />
                   <span>{t('כלול הגדרות ומפתחות API (גיבוי מלא — לא לשיתוף עם אחרים)')}</span>
+                </label>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0 0 0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={shareIncludeDrafts} onChange={(e) => setShareIncludeDrafts(e.target.checked)} />
+                  <span>{t('כלול טיוטות ברכה שמורות')}</span>
                 </label>
                 <button type="button" className="btn btn-primary" onClick={handleGenerateShare} disabled={shareSelectedIds.size === 0}>
                   {t('צור קובץ מוצפן')} ({shareSelectedIds.size})
@@ -3006,6 +3209,12 @@ export default function App() {
                       <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}>
                         <input type="checkbox" checked={importRestoreSettings} onChange={(e) => setImportRestoreSettings(e.target.checked)} />
                         <span>{t('שחזר גם הגדרות ומפתחות מהגיבוי')}</span>
+                      </label>
+                    )}
+                    {importHasDrafts && (
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.85rem', fontSize: '0.85rem', cursor: 'pointer' }}>
+                        <input type="checkbox" checked={importRestoreDrafts} onChange={(e) => setImportRestoreDrafts(e.target.checked)} />
+                        <span>{t('שחזר גם טיוטות ברכה מהגיבוי')}</span>
                       </label>
                     )}
                     <button type="button" className="btn btn-primary" onClick={handleConfirmImport}>{t('ייבא/י ומזג/י')}</button>
@@ -3276,6 +3485,7 @@ export default function App() {
                     <textarea
                       id="custom-instruction"
                       rows={3}
+                      maxLength={MAX_CUSTOM_INSTRUCTION_LEN}
                       className="form-textarea"
                       style={{ fontSize: '0.85rem', padding: '0.5rem 0.75rem' }}
                       placeholder={t('הוסף בקשה מיוחדת או פרטים לכלול...')}
@@ -3322,6 +3532,66 @@ export default function App() {
                 <span>{t('שלח בוואטסאפ')}</span>
               </button>
             </div>
+
+            {/* Save this greeting as a draft on the event (Feature 1) */}
+            {!isQuickMode && greetingPerson && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                style={{ width: '100%', marginTop: '1rem' }}
+                onClick={handleSaveEventDraft}
+                disabled={isGenerating || !greetingText.trim()}
+                id="btn-save-event-draft"
+              >
+                <Save size={16} />
+                <span>{draftFeedback === 'saved' ? t('נשמר!') : t('שמור טיוטה לאירוע')}</span>
+              </button>
+            )}
+
+            {/* Saved drafts for this event (load as example base / delete — Features 1, 3, 4) */}
+            {!isQuickMode && greetingPerson && personDrafts.length > 0 && (
+              <div style={{ marginTop: '1.25rem', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '1rem' }}>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: '0.35rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Bookmark size={16} style={{ color: 'var(--primary)' }} />
+                  <span>{t('טיוטות שמורות לאירוע')} ({personDrafts.length})</span>
+                </h3>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0 0 0.6rem' }}>
+                  {t('טיוטות משמשות גם כדוגמאות סגנון ליצירה הבאה')} ✨
+                </p>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {personDrafts.map(d => (
+                    <div key={d.id} className="glass-card" style={{ padding: '0.6rem 0.75rem', border: '1px solid var(--panel-border)', display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+                        <span className="numbers-font">{new Date(d.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: 0, whiteSpace: 'pre-wrap', maxHeight: '4.5em', overflow: 'hidden', lineHeight: '1.5' }} dir={d.lang === 'en' ? 'ltr' : 'rtl'}>
+                        {d.text}
+                      </p>
+                      <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary"
+                          style={{ flex: 1, padding: '0.3rem 0.7rem', fontSize: '0.76rem' }}
+                          onClick={() => handleLoadEventDraft(d)}
+                        >
+                          <Import size={13} />
+                          <span>{t('טען טיוטה')}</span>
+                        </button>
+                        <button
+                          type="button"
+                          className="icon-btn"
+                          style={{ color: 'var(--danger, #ff5c5c)' }}
+                          title={t('מחק טיוטה')}
+                          onClick={() => handleDeleteEventDraft(d.id)}
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {!isQuickMode && greetingPerson && !greetingPerson.phone && (
               <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center', marginTop: '0.75rem' }}>

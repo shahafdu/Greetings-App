@@ -45,6 +45,37 @@ export interface Person {
   dateMode?: 'gregorian' | 'hebrew' | 'both';
   // Deprecated: superseded by dateMode ('hebrew'). Kept so old saved events still work.
   useHebrewDate?: boolean;
+  // Saved greeting drafts attached to this event. The user can save an edited/generated greeting
+  // here to reuse later, and past drafts are fed back to the AI as style examples on regeneration.
+  // Not exported by default (opt-in via the "include drafts" toggle).
+  drafts?: GreetingDraft[];
+}
+
+// A saved greeting the user liked/edited. Attached to an event (Person.drafts) or kept in the
+// standalone quick-generator drafts list (QuickDraft extends this).
+export interface GreetingDraft {
+  id: string;
+  text: string;
+  createdAt: number;
+  // The tone/language the greeting was generated with, restored when the draft is loaded.
+  tone?: 'normal' | 'funny' | 'emotional' | 'short';
+  lang?: 'he' | 'en';
+}
+
+// A draft saved from the Quick Generator. Standalone (not tied to a stored event), so it also
+// carries the form inputs needed to reload the generator with the same recipient details.
+export interface QuickDraft extends GreetingDraft {
+  firstName: string;
+  lastName?: string;
+  occasion: string;
+  relation: string;
+  gender: Person['gender'];
+  years: number;
+  useFirstNameOnly?: boolean;
+  viaProxy?: boolean;
+  proxyName?: string;
+  proxyGender?: Person['gender'];
+  celebrantLink?: string;
 }
 
 export type AiProvider = 'gemini' | 'groq' | 'openrouter' | 'proxy';
@@ -119,6 +150,11 @@ export const OPENROUTER_MODELS = [
 
 const PEOPLE_STORAGE_KEY = 'birthday_greetings_people';
 const SETTINGS_STORAGE_KEY = 'birthday_greetings_settings';
+const QUICK_DRAFTS_STORAGE_KEY = 'birthday_greetings_quick_drafts';
+
+// Max drafts kept per event / in the quick list, so storage can't grow without bound.
+export const MAX_DRAFTS_PER_EVENT = 20;
+export const MAX_QUICK_DRAFTS = 50;
 
 export const RELATIONS = [
   'בן/בת זוג',
@@ -180,6 +216,7 @@ const PEOPLE_MIRROR_KEY = 'birthday_greetings_people_mirror';
 
 let peopleCache: Person[] | null = null;
 let settingsCache: AppSettings | null = null;
+let quickDraftsCache: QuickDraft[] | null = null;
 
 const migratePeople = (parsed: any[]): Person[] => parsed.map(p => {
   let firstName = p.firstName || '';
@@ -274,7 +311,7 @@ const loadPlainSettings = (): AppSettings =>
 const persist = (): void => {
   if (isVaultEnabled()) {
     if (isVaultUnlocked()) {
-      const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache });
+      const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache, quickDrafts: quickDraftsCache || [] });
       void encryptString(payload).then(blob => localStorage.setItem(VAULT_DATA_KEY, blob));
     }
     return;
@@ -285,7 +322,20 @@ const persist = (): void => {
     if (peopleCache.length > 0) localStorage.setItem(PEOPLE_MIRROR_KEY, JSON.stringify(peopleCache));
   }
   if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
+  if (quickDraftsCache) localStorage.setItem(QUICK_DRAFTS_STORAGE_KEY, JSON.stringify(quickDraftsCache));
 };
+
+const parseQuickDrafts = (raw: string | null): QuickDraft[] => {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+};
+
+const loadPlainQuickDrafts = (): QuickDraft[] => parseQuickDrafts(localStorage.getItem(QUICK_DRAFTS_STORAGE_KEY));
 
 // Call once on app start. Returns 'locked' if the App Lock is on and an unlock is needed;
 // otherwise loads plain data into the caches and returns 'ready'.
@@ -293,6 +343,7 @@ export const initStorage = (): 'ready' | 'locked' => {
   if (isVaultEnabled()) return 'locked';
   peopleCache = loadPlainPeople();
   settingsCache = loadPlainSettings();
+  quickDraftsCache = loadPlainQuickDrafts();
   return 'ready';
 };
 
@@ -305,12 +356,14 @@ export const unlockStorage = async (passphrase: string): Promise<boolean> => {
     // that would later overwrite the encrypted store with mock data.
     peopleCache = [];
     settingsCache = applySettingsDefaults(null);
+    quickDraftsCache = [];
     return true;
   }
   try {
-    const data = JSON.parse(await decryptString(blob)) as { people?: any[]; settings?: Partial<AppSettings> };
+    const data = JSON.parse(await decryptString(blob)) as { people?: any[]; settings?: Partial<AppSettings>; quickDrafts?: QuickDraft[] };
     peopleCache = migratePeople(data.people || []);
     settingsCache = applySettingsDefaults(data.settings || null);
+    quickDraftsCache = Array.isArray(data.quickDrafts) ? data.quickDrafts : [];
     return true;
   } catch {
     clearVaultKey(); // wrong passphrase: GCM decryption failed
@@ -324,8 +377,9 @@ export const unlockStorage = async (passphrase: string): Promise<boolean> => {
 export const enableLock = async (passphrase: string): Promise<void> => {
   if (!peopleCache) peopleCache = loadPlainPeople();
   if (!settingsCache) settingsCache = loadPlainSettings();
+  if (!quickDraftsCache) quickDraftsCache = loadPlainQuickDrafts();
   await setupVaultKey(passphrase);
-  const payload = JSON.stringify({ people: peopleCache, settings: settingsCache });
+  const payload = JSON.stringify({ people: peopleCache, settings: settingsCache, quickDrafts: quickDraftsCache });
   const blob = await encryptString(payload);
   localStorage.setItem(VAULT_DATA_KEY, blob);
   if (!localStorage.getItem(VAULT_DATA_KEY)) {
@@ -335,6 +389,7 @@ export const enableLock = async (passphrase: string): Promise<void> => {
   localStorage.removeItem(PEOPLE_STORAGE_KEY);
   localStorage.removeItem(SETTINGS_STORAGE_KEY);
   localStorage.removeItem(PEOPLE_MIRROR_KEY);
+  localStorage.removeItem(QUICK_DRAFTS_STORAGE_KEY);
 };
 
 // Turn off the App Lock: write the data back as plaintext and remove the vault.
@@ -345,6 +400,7 @@ export const disableLock = (): void => {
     if (peopleCache.length > 0) localStorage.setItem(PEOPLE_MIRROR_KEY, JSON.stringify(peopleCache));
   }
   if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
+  if (quickDraftsCache) localStorage.setItem(QUICK_DRAFTS_STORAGE_KEY, JSON.stringify(quickDraftsCache));
   localStorage.removeItem(VAULT_DATA_KEY);
   removeVault();
 };
@@ -386,6 +442,85 @@ export const updatePerson = (updatedPerson: Person): void => {
 
 export const deletePerson = (id: string): void => {
   savePeople(getPeople().filter(p => p.id !== id));
+};
+
+const makeDraftId = (): string => `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+// ---- Event-attached drafts (Feature 1) ----
+
+export const getPersonDrafts = (personId: string): GreetingDraft[] =>
+  getPeople().find(p => p.id === personId)?.drafts || [];
+
+// Save a greeting as a draft on an event. Returns the updated person (or undefined if not found).
+export const addPersonDraft = (
+  personId: string,
+  draft: Omit<GreetingDraft, 'id' | 'createdAt'>
+): Person | undefined => {
+  const people = getPeople();
+  const index = people.findIndex(p => p.id === personId);
+  if (index === -1) return undefined;
+  const newDraft: GreetingDraft = { ...draft, id: makeDraftId(), createdAt: Date.now() };
+  // Newest first, capped so storage can't grow without bound.
+  const drafts = [newDraft, ...(people[index].drafts || [])].slice(0, MAX_DRAFTS_PER_EVENT);
+  const updated = { ...people[index], drafts };
+  const next = [...people];
+  next[index] = updated;
+  savePeople(next);
+  return updated;
+};
+
+export const deletePersonDraft = (personId: string, draftId: string): Person | undefined => {
+  const people = getPeople();
+  const index = people.findIndex(p => p.id === personId);
+  if (index === -1) return undefined;
+  const updated = { ...people[index], drafts: (people[index].drafts || []).filter(d => d.id !== draftId) };
+  const next = [...people];
+  next[index] = updated;
+  savePeople(next);
+  return updated;
+};
+
+// ---- Quick-generator standalone drafts (Feature 2) ----
+
+export const getQuickDrafts = (): QuickDraft[] => {
+  if (quickDraftsCache) return quickDraftsCache;
+  if (!isVaultEnabled()) {
+    quickDraftsCache = loadPlainQuickDrafts();
+    return quickDraftsCache;
+  }
+  return []; // locked and not yet unlocked
+};
+
+export const saveQuickDrafts = (drafts: QuickDraft[]): void => {
+  quickDraftsCache = drafts;
+  persist();
+};
+
+export const addQuickDraft = (draft: Omit<QuickDraft, 'id' | 'createdAt'>): QuickDraft => {
+  const newDraft: QuickDraft = { ...draft, id: makeDraftId(), createdAt: Date.now() };
+  saveQuickDrafts([newDraft, ...getQuickDrafts()].slice(0, MAX_QUICK_DRAFTS));
+  return newDraft;
+};
+
+export const deleteQuickDraft = (id: string): void => {
+  saveQuickDrafts(getQuickDrafts().filter(d => d.id !== id));
+};
+
+// Merge imported quick drafts into the existing list, de-duplicating by text (Feature 1 export).
+export const mergeQuickDrafts = (incoming: QuickDraft[]): number => {
+  if (!incoming.length) return 0;
+  const existing = getQuickDrafts();
+  const seen = new Set(existing.map(d => d.text.trim()));
+  let added = 0;
+  const merged = [...existing];
+  incoming.forEach(d => {
+    if (!d || !d.text || seen.has(d.text.trim())) return;
+    merged.push({ ...d, id: d.id || makeDraftId(), createdAt: d.createdAt || Date.now() });
+    seen.add(d.text.trim());
+    added++;
+  });
+  if (added) saveQuickDrafts(merged.slice(0, MAX_QUICK_DRAFTS));
+  return added;
 };
 
 export const getSettings = (): AppSettings => {

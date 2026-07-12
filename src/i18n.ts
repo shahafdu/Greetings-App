@@ -316,6 +316,18 @@ const EN: Record<string, string> = {
   'שלח/י את הקובץ בוואטסאפ (כמסמך) או במייל. בצד השני פותחים ומייבאים את הקובץ, ומזינים את הקוד.': 'Send the file on WhatsApp (as a document) or by email. On the other device, open and import the file, then enter the code.',
   'שמור/י את הקובץ ושלח/י אותו. בצד השני מייבאים את הקובץ ומזינים את הקוד.': 'Save the file and send it. On the other device, import the file and enter the code.',
   'בחר/י קובץ גיבוי': 'Choose backup file',
+
+  // Drafts (Features 1, 2, 4)
+  'שמור טיוטה': 'Save draft',
+  'שמור טיוטה לאירוע': 'Save draft to event',
+  'נשמר!': 'Saved!',
+  'טיוטות שמורות': 'Saved drafts',
+  'טיוטות שמורות לאירוע': 'Saved drafts for this event',
+  'טען טיוטה': 'Load draft',
+  'מחק טיוטה': 'Delete draft',
+  'טיוטות משמשות גם כדוגמאות סגנון ליצירה הבאה': 'Drafts are also used as style examples for the next generation',
+  'כלול טיוטות ברכה שמורות': 'Include saved greeting drafts',
+  'שחזר גם טיוטות ברכה מהגיבוי': 'Also restore greeting drafts from the backup',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

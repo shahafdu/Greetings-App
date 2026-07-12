@@ -3,7 +3,7 @@
 // code (sent out-of-band) to decrypt and merge. Device-specific fields are stripped so events
 // migrate cleanly to another device or person (a phone number is plain, portable data).
 
-import type { Person, AppSettings } from './storage';
+import type { Person, AppSettings, QuickDraft } from './storage';
 
 // Settings safe to carry in a full backup (AI keys + preferences). The Google sign-in session is
 // intentionally excluded — you re-connect Google on the new device.
@@ -62,21 +62,33 @@ export const generateShareCode = (): string => {
 // The portable form of an event: drop the local id and the calendar-sync link.
 export type PortableEvent = Omit<Person, 'id' | 'sourceEventId'>;
 
-const toPortable = (p: Person): PortableEvent => {
-  const { id: _id, sourceEventId: _s, ...rest } = p;
+// Saved greeting drafts are personal notes, not shared by default (Feature 1). They travel only
+// when the user opts in via includeDrafts — otherwise we strip them from each exported event.
+const toPortable = (p: Person, includeDrafts: boolean): PortableEvent => {
+  const { id: _id, sourceEventId: _s, drafts, ...rest } = p;
   void _id; void _s;
-  return rest;
+  return includeDrafts ? { ...rest, drafts } : rest;
 };
 
 export interface DecryptedBundle {
   events: PortableEvent[];
   settings?: Partial<AppSettings>; // present only in a full backup
+  quickDrafts?: QuickDraft[];      // present only when the sender opted to include drafts
 }
 
 export const encryptEvents = async (
-  events: Person[], code: string, settings?: Partial<AppSettings>
+  events: Person[],
+  code: string,
+  settings?: Partial<AppSettings>,
+  opts?: { includeDrafts?: boolean; quickDrafts?: QuickDraft[] }
 ): Promise<string> => {
-  const payload = JSON.stringify({ v: 1, events: events.map(toPortable), settings });
+  const includeDrafts = !!opts?.includeDrafts;
+  const payload = JSON.stringify({
+    v: 1,
+    events: events.map(e => toPortable(e, includeDrafts)),
+    settings,
+    quickDrafts: includeDrafts ? (opts?.quickDrafts || []) : undefined
+  });
   // Compress before encrypting so the shared blob/file stays small (gzip, when supported).
   let body: Uint8Array = encoder.encode(payload);
   let magic = SHARE_MAGIC;
@@ -115,6 +127,6 @@ export const decryptEvents = async (blob: string, code: string): Promise<Decrypt
     throw new Error('הקוד שגוי או שהקובץ פגום.');
   }
   const bytes = parts[0] === SHARE_MAGIC_GZ ? await gunzip(new Uint8Array(pt)) : new Uint8Array(pt);
-  const data = JSON.parse(decoder.decode(bytes)) as { events?: PortableEvent[]; settings?: Partial<AppSettings> };
-  return { events: data.events || [], settings: data.settings };
+  const data = JSON.parse(decoder.decode(bytes)) as { events?: PortableEvent[]; settings?: Partial<AppSettings>; quickDrafts?: QuickDraft[] };
+  return { events: data.events || [], settings: data.settings, quickDrafts: data.quickDrafts };
 };
