@@ -27,7 +27,9 @@ The **web app is feature-complete and stable** for the web/Windows phase. Next m
 - **AI guardrails** (`services/aiGuard.ts`): client-side rate limits (per minute/hour/day) on real
   AI calls, a length cap on user free-text, and prompt hardening so custom instructions can only
   personalize a greeting (not repurpose the model). On a rate-limit trip the template fallback is
-  shown with an explanatory note. (The shared proxy should still enforce the real server-side cap.)
+  shown with an explanatory note. The **Worker proxy enforces the real caps** server-side
+  (`worker/greetings-ai-proxy.js`): per-IP 6/min + 30/day, greetings-only request shape, model
+  allowlist, 600-token completion clamp. Re-deploy with `npx wrangler deploy` after changes.
 - **WhatsApp**: send via `wa.me` (click-to-send, pre-filled text).
 - **App Lock**: opt-in passphrase AES-GCM encryption of all data at rest. Self-healing storage.
 

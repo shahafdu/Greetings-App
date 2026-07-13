@@ -22,12 +22,26 @@ Free to run (Cloudflare Workers free tier = 100k requests/day).
    `src/services/gemini.ts`. Once set, the app shows a **"מובנה (ללא מפתח)"** AI option that
    works with no user key.
 
-## Optional hardening
+## Abuse guardrails
 
-- **Rate limit** (per-IP daily cap): `npx wrangler kv namespace create RL`, paste the id into
-  `wrangler.toml` (uncomment the block), then `npx wrangler deploy`.
+The Worker is the real enforcement point (the app's client-side limits are best-effort, since
+the URL is public in the app source). Baked into the code, no setup needed:
+
+- **Greetings-only request shape**: max 2 user text messages, no system/assistant roles, prompt
+  capped at 8,000 chars — multi-turn chat or oversized inputs are rejected with 400.
+- **Model allowlist**: unknown model ids are coerced to the default, so the key can't be pointed
+  at other models. Completion size is clamped to 600 tokens.
+- **Per-IP rate limits** (needs the RL KV binding, see below): 6/minute burst + 30/day.
+
+Optional extras:
+
+- **Rate limit binding** (enables the per-IP caps): `npx wrangler kv namespace create RL`, paste
+  the id into `wrangler.toml`, then `npx wrangler deploy`. (Already configured in this repo's
+  `wrangler.toml`; without the binding the shape checks still apply but calls are unmetered.)
 - **Shared secret** (so only the app can call it): `npx wrangler secret put PROXY_TOKEN`, then set
   the same value in `AI_PROXY_TOKEN` in `src/services/gemini.ts`.
+
+After changing the Worker code, re-deploy from this folder: `npx wrangler deploy`.
 
 ## Cost
 
