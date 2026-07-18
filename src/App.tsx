@@ -52,6 +52,7 @@ import {
   isLockEnabled,
   calculateYears,
   getCelebrationYears,
+  getYearsForOccurrence,
   getDaysToEvent,
   isEventToday,
   getDateMode,
@@ -1432,11 +1433,16 @@ export default function App() {
             )}
           </span>
           <div className="calendar-birthdays-container">
-            {cellEvents.map(p => (
-              <div key={p.id} className={`calendar-birthday-dot ${getRelationCategory(p.relation)}`} title={`${p.firstName} (${p.occasion} - ${p.relation})`}>
-                {getOccasionEmoji(p.occasion)} {p.firstName}
+            {cellEvents.map(p => {
+              // Age / anniversary count reached in the year of THIS cell (so past/future months
+              // show the age for their own year, not today's).
+              const yrs = getYearsForOccurrence(p, cell.year);
+              return (
+              <div key={p.id} className={`calendar-birthday-dot ${getRelationCategory(p.relation)}`} title={`${p.firstName} (${p.occasion} - ${p.relation}${yrs && yrs > 0 ? ` · ${yrs}` : ''})`}>
+                {getOccasionEmoji(p.occasion)} {p.firstName}{yrs && yrs > 0 ? ` (${yrs})` : ''}
               </div>
-            ))}
+              );
+            })}
             {cellGoogleEvents.map(e => (
               <div
                 key={e.id}
@@ -1622,11 +1628,13 @@ export default function App() {
                   const dateKind = settings.showHebrewDates
                     ? getOccurrenceDateKind(p, new Date(selectedDay.year, selectedDay.month, selectedDay.day))
                     : null;
+                  // Age / anniversary count for the viewed day's year.
+                  const yrs = getYearsForOccurrence(p, selectedDay.year);
                   return (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</div>
-                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t(p.occasion)} · {t(p.relation)}</div>
+                      <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t(p.occasion)} · {t(p.relation)}{yrs && yrs > 0 ? ` · ${yrs} ${t('שנים')}` : ''}</div>
                       {dateKind && (
                         <div style={{ fontSize: '0.72rem', color: 'var(--secondary)', marginTop: '0.15rem', fontWeight: 600 }}>{dateKindLabel(dateKind)}</div>
                       )}

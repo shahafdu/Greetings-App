@@ -568,6 +568,17 @@ export const getCelebrationYears = (person: Person): number => {
   return Math.max(0, next.getFullYear() - birth.getFullYear());
 };
 
+// The age / anniversary count for the occurrence in a SPECIFIC Gregorian year — used on the
+// calendar so an event reflects the age reached that year (last year's grid shows last year's
+// age, next year's shows next year's). Returns null when the count isn't meaningful (non-yearly
+// or one-time events).
+export const getYearsForOccurrence = (person: Person, gregYear: number): number | null => {
+  if (!person.isRecurring || person.recurrence !== 'yearly') return null;
+  const birthYear = new Date(person.eventDate).getFullYear();
+  if (isNaN(birthYear)) return null;
+  return Math.max(0, gregYear - birthYear);
+};
+
 // Whether an event greets on the Gregorian date, the Hebrew date, or both.
 // Back-compat: the old useHebrewDate boolean maps to 'hebrew'.
 export const getDateMode = (person: Person): 'gregorian' | 'hebrew' | 'both' =>
