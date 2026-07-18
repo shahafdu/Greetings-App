@@ -1,6 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import type { Person, AppSettings } from './storage';
-import { calculateYears, DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_MODEL, DEFAULT_OPENROUTER_MODEL } from './storage';
+import { getCelebrationYears, DEFAULT_GEMINI_MODEL, DEFAULT_GROQ_MODEL, DEFAULT_OPENROUTER_MODEL } from './storage';
 import { checkAiRateLimit, recordAiUse, clampUserText } from './aiGuard';
 
 // Helper to determine the greeting name (first name only vs full name)
@@ -27,7 +27,7 @@ export const generateFallbackGreeting = (
   senderGender: 'Male' | 'Female' = 'Male',
   senderName = ''
 ): string => {
-  const years = calculateYears(person.eventDate);
+  const years = getCelebrationYears(person);
   const name = getGreetingName(person);
   const isFemale = person.gender === 'Female';
 
@@ -309,7 +309,7 @@ const genderGrammar = (gender: Person['gender']): string => {
 
 // Simple English template fallback (used when no AI is available and the greeting language is English).
 const englishFallbackGreeting = (person: Person, tone: string, customDetails = '', senderName = ''): string => {
-  const years = calculateYears(person.eventDate);
+  const years = getCelebrationYears(person);
   const name = getGreetingName(person);
   const sig = senderName.trim() ? `\n\nWith love,\n${senderName.trim()}` : '';
   if (person.proxyName && person.proxyName.trim()) {
@@ -382,7 +382,7 @@ export const generateHebrewBirthdayGreeting = async (
   const examplesBlock = buildExamplesBlock(examples, lang);
 
   try {
-    const years = calculateYears(person.eventDate);
+    const years = getCelebrationYears(person);
     const genderHebrew = genderGrammar(person.gender);
     const senderHebrew = senderGender === 'Female' ? 'נקבה' : 'זכר';
     const nameForGreeting = getGreetingName(person);

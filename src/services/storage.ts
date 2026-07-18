@@ -537,7 +537,7 @@ export const saveSettings = (settings: AppSettings): void => {
   persist();
 };
 
-// Calculate age or years since start date
+// Calculate age or years since start date, completed AS OF TODAY (current age).
 export const calculateYears = (eventDateStr: string): number => {
   const eventDate = new Date(eventDateStr);
   const today = new Date();
@@ -547,6 +547,25 @@ export const calculateYears = (eventDateStr: string): number => {
     years--;
   }
   return Math.max(0, years);
+};
+
+// The age / anniversary count the person (or couple) reaches at their NEXT occurrence of the
+// event — the number that belongs in "Happy Nth birthday". calculateYears gives the CURRENT
+// completed count as of today; for a yearly event whose date this year hasn't arrived yet, the
+// celebration count is one higher (e.g. born 19/07/1989, on 18/07 they are 35 but turn 37 the
+// next day). Non-yearly / one-time events fall back to the plain current count.
+export const getCelebrationYears = (person: Person): number => {
+  const birth = new Date(person.eventDate);
+  if (isNaN(birth.getTime())) return 0;
+  if (!person.isRecurring || person.recurrence !== 'yearly') {
+    return calculateYears(person.eventDate);
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const next = new Date(today.getFullYear(), birth.getMonth(), birth.getDate());
+  next.setHours(0, 0, 0, 0);
+  if (next < today) next.setFullYear(today.getFullYear() + 1);
+  return Math.max(0, next.getFullYear() - birth.getFullYear());
 };
 
 // Whether an event greets on the Gregorian date, the Hebrew date, or both.

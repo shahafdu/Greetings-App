@@ -51,6 +51,7 @@ import {
   disableLock,
   isLockEnabled,
   calculateYears,
+  getCelebrationYears,
   getDaysToEvent,
   isEventToday,
   getDateMode,
@@ -2110,7 +2111,8 @@ export default function App() {
               <div className="people-grid" id="contacts-grid">
                 {filteredPeople.map((person) => {
                   const daysLeft = getDaysToEvent(person);
-                  const years = calculateYears(person.eventDate);
+                  // Age/anniversary count reached on the UPCOMING date (not the current age).
+                  const years = getCelebrationYears(person);
                   
                   let daysBadgeClass = 'far';
                   let daysBadgeText = '';
@@ -3275,7 +3277,7 @@ export default function App() {
                 </span>
               </h2>
               <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginTop: '0.25rem' }}>
-                {!isQuickMode && greetingPerson && `${t(greetingPerson.relation)} • ${t(greetingPerson.occasion)} (${calculateYears(greetingPerson.eventDate)} ${t('שנים')})`}
+                {!isQuickMode && greetingPerson && `${t(greetingPerson.relation)} • ${t(greetingPerson.occasion)} (${getCelebrationYears(greetingPerson)} ${t('שנים')})`}
                 {isQuickMode && t('יצירת ברכה חכמה ללא שמירה')}
               </p>
             </div>
