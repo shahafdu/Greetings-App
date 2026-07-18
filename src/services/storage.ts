@@ -8,7 +8,7 @@ import {
   encryptString,
   decryptString
 } from './vault';
-import { nextHebrewOccurrence } from './hebrewDate';
+import { nextHebrewOccurrence, hebrewAnniversaryInGregYear } from './hebrewDate';
 
 export interface Person {
   id: string;
@@ -553,6 +553,40 @@ export const calculateYears = (eventDateStr: string): number => {
 // Back-compat: the old useHebrewDate boolean maps to 'hebrew'.
 export const getDateMode = (person: Person): 'gregorian' | 'hebrew' | 'both' =>
   person.dateMode || (person.useHebrewDate ? 'hebrew' : 'gregorian');
+
+// For a given occurrence date, say whether it is the event's Hebrew anniversary, its Gregorian
+// anniversary, or both fall on the same day. Returns null when there is no Hebrew/Gregorian
+// distinction worth surfacing — i.e. the event has no Hebrew date, or it greets on the Gregorian
+// calendar only (so every occurrence is trivially the Gregorian one). Callers still gate on the
+// user's "show Hebrew dates" setting before displaying the result.
+export const getOccurrenceDateKind = (
+  person: Person,
+  date: Date
+): 'hebrew' | 'gregorian' | 'both' | null => {
+  const mode = getDateMode(person);
+  const hasHeb = !!(person.hebrewDay && person.hebrewMonth);
+  if (!hasHeb || (mode !== 'hebrew' && mode !== 'both')) return null;
+
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+
+  const hebAnniv = hebrewAnniversaryInGregYear(person.hebrewDay!, person.hebrewMonth!, d.getFullYear());
+  const hebMatch = !!hebAnniv && hebAnniv.getMonth() === d.getMonth() && hebAnniv.getDate() === d.getDate();
+
+  // A Gregorian anniversary only co-exists when the event greets on both calendars.
+  let gregMatch = false;
+  if (mode === 'both') {
+    const ev = new Date(person.eventDate);
+    ev.setHours(0, 0, 0, 0);
+    gregMatch = ev.getMonth() === d.getMonth() && ev.getDate() === d.getDate();
+  }
+
+  if (hebMatch && gregMatch) return 'both';
+  if (hebMatch) return 'hebrew';
+  // Not the Hebrew anniversary: for a 'both' event this occurrence is the Gregorian one; for a
+  // Hebrew-only event any real occurrence is the Hebrew date (fall back to that).
+  return mode === 'both' ? 'gregorian' : 'hebrew';
+};
 
 // Days until the next Gregorian anniversary of the Hebrew date.
 const hebrewDaysToEvent = (person: Person, today: Date): number => {

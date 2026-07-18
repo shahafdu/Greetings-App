@@ -328,6 +328,11 @@ const EN: Record<string, string> = {
   'טיוטות משמשות גם כדוגמאות סגנון ליצירה הבאה': 'Drafts are also used as style examples for the next generation',
   'כלול טיוטות ברכה שמורות': 'Include saved greeting drafts',
   'שחזר גם טיוטות ברכה מהגיבוי': 'Also restore greeting drafts from the backup',
+
+  // Hebrew vs Gregorian occurrence labels (calendar / today notice)
+  'לפי התאריך העברי': 'On the Hebrew date',
+  'לפי התאריך הלועזי': 'On the Gregorian date',
+  'התאריך העברי והלועזי': 'Hebrew & Gregorian date',
 };
 
 export const t = (he: string): string => (current === 'en' ? (EN[he] ?? he) : he);

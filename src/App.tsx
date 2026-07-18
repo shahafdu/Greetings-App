@@ -54,6 +54,7 @@ import {
   getDaysToEvent,
   isEventToday,
   getDateMode,
+  getOccurrenceDateKind,
   getOccasionEmoji,
   getGenderLabel,
   getRelationCategory,
@@ -112,6 +113,16 @@ const GOOGLE_SCOPES = [
   'https://www.googleapis.com/auth/contacts.readonly',
   'https://www.googleapis.com/auth/calendar.readonly'
 ];
+
+// Short label noting whether an occurrence falls on the Hebrew or Gregorian date. Shown only
+// when the user enabled "show Hebrew dates" (so the app supports both calendars). Returns '' for
+// events with no Hebrew/Gregorian distinction to surface.
+const dateKindLabel = (kind: 'hebrew' | 'gregorian' | 'both' | null): string => {
+  if (kind === 'hebrew') return `🕎 ${t('לפי התאריך העברי')}`;
+  if (kind === 'gregorian') return `📅 ${t('לפי התאריך הלועזי')}`;
+  if (kind === 'both') return `🕎📅 ${t('התאריך העברי והלועזי')}`;
+  return '';
+};
 
 export default function App() {
   // App navigation
@@ -1555,12 +1566,16 @@ export default function App() {
             <div>
               <h2 className="alert-title">{t('היום יש אירוע!')}</h2>
               <p className="alert-desc">
-                {todaysOccasions.map((p, idx) => (
+                {todaysOccasions.map((p, idx) => {
+                  const kind = settings.showHebrewDates ? getOccurrenceDateKind(p, new Date()) : null;
+                  const label = dateKindLabel(kind);
+                  return (
                   <span key={p.id} style={{ fontWeight: 'bold' }}>
-                    {getOccasionEmoji(p.occasion)} {t(p.occasion)} {t('של')} {p.firstName} {p.lastName || ''} ({t(p.relation)})!
+                    {getOccasionEmoji(p.occasion)} {t(p.occasion)} {t('של')} {p.firstName} {p.lastName || ''} ({t(p.relation)}){label ? ` — ${label}` : ''}!
                     {idx < todaysOccasions.length - 1 ? ', ' : ''}
                   </span>
-                ))}
+                  );
+                })}
               </p>
             </div>
           </div>
@@ -1602,18 +1617,26 @@ export default function App() {
                   <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>{t('אין אירועים ביום זה.')}</p>
                 )}
 
-                {saved.map(p => (
+                {saved.map(p => {
+                  const dateKind = settings.showHebrewDates
+                    ? getOccurrenceDateKind(p, new Date(selectedDay.year, selectedDay.month, selectedDay.day))
+                    : null;
+                  return (
                   <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', padding: '0.5rem 0', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontWeight: 700 }}>{getOccasionEmoji(p.occasion)} {p.firstName} {p.lastName || ''}</div>
                       <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>{t(p.occasion)} · {t(p.relation)}</div>
+                      {dateKind && (
+                        <div style={{ fontSize: '0.72rem', color: 'var(--secondary)', marginTop: '0.15rem', fontWeight: 600 }}>{dateKindLabel(dateKind)}</div>
+                      )}
                     </div>
                     <div style={{ display: 'flex', gap: '0.4rem', flexShrink: 0 }}>
                       <button type="button" className="btn btn-primary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleOpenGreeting(p)}>{t('ברכה')}</button>
                       <button type="button" className="btn btn-secondary" style={{ width: 'auto', padding: '0.35rem 0.6rem', fontSize: '0.75rem' }} onClick={() => handleStartEdit(p)}>{t('עריכה')}</button>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
 
                 {pending.length > 0 && (
                   <p style={{ fontSize: '0.8rem', color: 'var(--secondary)', margin: '0.85rem 0 0.35rem' }}>{t('אירועים מהיומן — בחר/י מה להוסיף:')}</p>

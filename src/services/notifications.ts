@@ -6,8 +6,19 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Person } from './storage';
-import { getOccasionEmoji, getDateMode } from './storage';
+import { getOccasionEmoji, getDateMode, getOccurrenceDateKind, getSettings } from './storage';
 import { nextHebrewOccurrence } from './hebrewDate';
+
+// Hebrew note for whether a notification's occurrence is the Hebrew or Gregorian date. Shown only
+// when the user enabled "show Hebrew dates" (the app is configured to support both calendars).
+const dateKindNote = (person: Person, occurrence: Date): string => {
+  if (!getSettings().showHebrewDates) return '';
+  const kind = getOccurrenceDateKind(person, occurrence);
+  if (kind === 'hebrew') return ' (לפי התאריך העברי 🕎)';
+  if (kind === 'gregorian') return ' (לפי התאריך הלועזי 📅)';
+  if (kind === 'both') return ' (התאריך העברי והלועזי 🕎📅)';
+  return '';
+};
 
 // Next Gregorian occurrence (ignores the Hebrew date).
 const gregorianNext = (person: Person, today: Date): Date | null => {
@@ -89,11 +100,12 @@ export const scheduleEventNotifications = async (people: Person[]): Promise<void
       const fullName = `${p.firstName}${p.lastName ? ' ' + p.lastName : ''}`;
       const days = p.notifyDaysBefore || 0;
       const when = days === 0 ? 'היום' : days === 1 ? 'מחר' : `בעוד ${days} ימים`;
+      const dateNote = dateKindNote(p, occurrence);
 
       return {
         id: idx + 1,
         title: `${getOccasionEmoji(p.occasion)} ${p.occasion} של ${p.firstName}`,
-        body: `${when}: ${p.occasion} של ${fullName}. הקש/י כדי להכין ברכה.`,
+        body: `${when}: ${p.occasion} של ${fullName}${dateNote}. הקש/י כדי להכין ברכה.`,
         schedule: { at },
       };
     })
