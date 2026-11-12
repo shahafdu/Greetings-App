@@ -229,6 +229,7 @@ const EN: Record<string, string> = {
   'הדבק/י כאן את הטקסט המוצפן': 'Paste the encrypted text here',
   'קוד הפענוח': 'Decryption code',
   '6 תווים': '6 characters',
+  'הקוד שקיבלת': 'The code you received',
   'ייבא/י ומזג/י': 'Import & merge',
   'פענח/י ותצוגה מקדימה': 'Decrypt & preview',
   'כדי לייבא אנשי קשר, התחבר/י לחשבון Google.': 'To import contacts, sign in to Google.',

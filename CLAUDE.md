@@ -53,6 +53,12 @@ with `run_in_background: true`.
   in-memory cache, a **self-healing mirror** (`birthday_greetings_people_mirror`), and `persist()`
   that never writes empty/plaintext-when-locked. **Never** seed defaults over existing data; never
   write `[]`. There is intentionally **no plaintext JSON export** (security).
+- **Dates:** never `new Date('YYYY-MM-DD')` (parses as UTC → a day early west of UTC). Use
+  `parseLocalDate`, and `gregorianOccursOn` / `nextGregorianOccurrence` from `storage.ts` — the one
+  source of truth for "is it today", the calendar grid and notifications.
+- **Imported share files are untrusted.** `decryptEvents` (`share.ts`) validates/whitelists every
+  event, draft and setting; when adding a field to `Person`/`AppSettings`, add it there too or it
+  won't survive export→import.
 - **Encryption = the App Lock** (opt-in passphrase, AES-GCM). On Android this becomes automatic via
   the device keystore + biometric. Don't add fake "device-key" encryption (key next to data).
 - **Google OAuth `CLIENT_ID` in `main.tsx` is public** (fine to commit). Real keys/contacts/events

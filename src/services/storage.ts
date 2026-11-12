@@ -218,7 +218,7 @@ let peopleCache: Person[] | null = null;
 let settingsCache: AppSettings | null = null;
 let quickDraftsCache: QuickDraft[] | null = null;
 
-const migratePeople = (parsed: any[]): Person[] => parsed.map(p => {
+const migratePeople = (parsed: any[]): Person[] => parsed.filter(p => p && typeof p === 'object').map(p => {
   let firstName = p.firstName || '';
   let lastName = p.lastName || '';
   if (!firstName && p.name) {
@@ -302,17 +302,39 @@ const loadPlainPeople = (): Person[] => {
   return [];
 };
 
-const loadPlainSettings = (): AppSettings =>
-  applySettingsDefaults(localStorage.getItem(SETTINGS_STORAGE_KEY) ? JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY)!) : null);
+// A corrupt/non-object settings value must never crash app start-up (that would lock the user
+// out of their events) — fall back to defaults instead.
+const loadPlainSettings = (): AppSettings => {
+  let raw: Partial<AppSettings> | null = null;
+  try {
+    const parsed = JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY) || 'null');
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) raw = parsed;
+  } catch {
+    raw = null;
+  }
+  return applySettingsDefaults(raw);
+};
 
 // Persist the current caches. When the App Lock is enabled, data goes ONLY into the
 // encrypted blob — never plaintext. When it's enabled but locked (no key in memory, e.g.
 // after a hot-reload), we skip writing entirely so a stale/plaintext copy can't clobber it.
+// Encrypted writes are async, so they are chained: each one snapshots the caches when it RUNS
+// (not when it was queued) and they land strictly in order. Without this, two quick saves could
+// finish out of order and an older snapshot would overwrite the newer one.
+let encryptedWriteChain: Promise<void> = Promise.resolve();
+
 const persist = (): void => {
   if (isVaultEnabled()) {
     if (isVaultUnlocked()) {
-      const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache, quickDrafts: quickDraftsCache || [] });
-      void encryptString(payload).then(blob => localStorage.setItem(VAULT_DATA_KEY, blob));
+      encryptedWriteChain = encryptedWriteChain.then(async () => {
+        // The lock may have been disabled (or the key dropped) while this write was queued.
+        if (!isVaultEnabled() || !isVaultUnlocked()) return;
+        const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache, quickDrafts: quickDraftsCache || [] });
+        const blob = await encryptString(payload);
+        if (isVaultEnabled() && isVaultUnlocked()) localStorage.setItem(VAULT_DATA_KEY, blob);
+      }).catch(err => {
+        console.error('Failed to persist encrypted data:', err instanceof Error ? err.message : err);
+      });
     }
     return;
   }
@@ -352,21 +374,29 @@ export const unlockStorage = async (passphrase: string): Promise<boolean> => {
   if (!(await loadVaultKey(passphrase))) return false;
   const blob = localStorage.getItem(VAULT_DATA_KEY);
   if (!blob) {
-    // Vault enabled but no encrypted data: start empty. Do NOT seed mock defaults here —
-    // that would later overwrite the encrypted store with mock data.
-    peopleCache = [];
-    settingsCache = applySettingsDefaults(null);
-    quickDraftsCache = [];
+    // Vault enabled but no encrypted data (e.g. enabling the lock was interrupted before the
+    // encrypted copy was written). Pick up any plaintext copy that is still there rather than
+    // starting empty — starting empty would orphan the user's events. Never seed mock defaults.
+    peopleCache = loadPlainPeople();
+    settingsCache = loadPlainSettings();
+    quickDraftsCache = loadPlainQuickDrafts();
     return true;
   }
+  let plaintext: string;
   try {
-    const data = JSON.parse(await decryptString(blob)) as { people?: any[]; settings?: Partial<AppSettings>; quickDrafts?: QuickDraft[] };
-    peopleCache = migratePeople(data.people || []);
-    settingsCache = applySettingsDefaults(data.settings || null);
+    plaintext = await decryptString(blob);
+  } catch {
+    clearVaultKey(); // wrong passphrase: GCM decryption failed
+    return false;
+  }
+  try {
+    const data = JSON.parse(plaintext) as { people?: any[]; settings?: Partial<AppSettings>; quickDrafts?: QuickDraft[] };
+    peopleCache = migratePeople(Array.isArray(data.people) ? data.people : []);
+    settingsCache = applySettingsDefaults(data.settings && typeof data.settings === 'object' ? data.settings : null);
     quickDraftsCache = Array.isArray(data.quickDrafts) ? data.quickDrafts : [];
     return true;
   } catch {
-    clearVaultKey(); // wrong passphrase: GCM decryption failed
+    clearVaultKey();
     return false;
   }
 };
@@ -379,11 +409,19 @@ export const enableLock = async (passphrase: string): Promise<void> => {
   if (!settingsCache) settingsCache = loadPlainSettings();
   if (!quickDraftsCache) quickDraftsCache = loadPlainQuickDrafts();
   await setupVaultKey(passphrase);
-  const payload = JSON.stringify({ people: peopleCache, settings: settingsCache, quickDrafts: quickDraftsCache });
-  const blob = await encryptString(payload);
-  localStorage.setItem(VAULT_DATA_KEY, blob);
-  if (!localStorage.getItem(VAULT_DATA_KEY)) {
-    throw new Error('Failed to persist encrypted vault; keeping plaintext.');
+  try {
+    const payload = JSON.stringify({ people: peopleCache, settings: settingsCache, quickDrafts: quickDraftsCache });
+    const blob = await encryptString(payload);
+    localStorage.setItem(VAULT_DATA_KEY, blob);
+    if (localStorage.getItem(VAULT_DATA_KEY) !== blob) {
+      throw new Error('Failed to persist encrypted vault; keeping plaintext.');
+    }
+  } catch (err) {
+    // Roll back to the plaintext state: otherwise the app would report "locked" with no
+    // encrypted data behind it, and the (still present) plaintext would be ignored.
+    localStorage.removeItem(VAULT_DATA_KEY);
+    removeVault();
+    throw err;
   }
   // Encrypted copy confirmed — now it is safe to delete the plaintext (incl. the mirror).
   localStorage.removeItem(PEOPLE_STORAGE_KEY);
@@ -537,9 +575,32 @@ export const saveSettings = (settings: AppSettings): void => {
   persist();
 };
 
+const DAY_MS = 1000 * 60 * 60 * 24;
+
+// Parse a stored YYYY-MM-DD as LOCAL midnight. `new Date('YYYY-MM-DD')` parses as UTC midnight,
+// which is the previous calendar day in every timezone west of UTC — events would land a day
+// early there. Falls back to the native parser for anything not in that shape.
+export const parseLocalDate = (value: string): Date => {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(value || '');
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const d = new Date(value);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+// A date for (year, month, day) with the day clamped to the month's length, so the 31st of a
+// 30-day month (or Feb 29 in a non-leap year) lands on the month's last day instead of
+// overflowing into the next month.
+const clampedDate = (year: number, month: number, day: number): Date =>
+  new Date(year, month, Math.min(day, new Date(year, month + 1, 0).getDate()));
+
+// Whole days between two local midnights (rounded, so a 23h/25h DST day still counts as one).
+const daysBetween = (from: Date, to: Date): number => Math.round((to.getTime() - from.getTime()) / DAY_MS);
+
 // Calculate age or years since start date, completed AS OF TODAY (current age).
 export const calculateYears = (eventDateStr: string): number => {
-  const eventDate = new Date(eventDateStr);
+  const eventDate = parseLocalDate(eventDateStr);
+  if (isNaN(eventDate.getTime())) return 0;
   const today = new Date();
   let years = today.getFullYear() - eventDate.getFullYear();
   const m = today.getMonth() - eventDate.getMonth();
@@ -555,16 +616,15 @@ export const calculateYears = (eventDateStr: string): number => {
 // celebration count is one higher (e.g. born 19/07/1989, on 18/07 they are 35 but turn 37 the
 // next day). Non-yearly / one-time events fall back to the plain current count.
 export const getCelebrationYears = (person: Person): number => {
-  const birth = new Date(person.eventDate);
+  const birth = parseLocalDate(person.eventDate);
   if (isNaN(birth.getTime())) return 0;
   if (!person.isRecurring || person.recurrence !== 'yearly') {
     return calculateYears(person.eventDate);
   }
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const next = new Date(today.getFullYear(), birth.getMonth(), birth.getDate());
-  next.setHours(0, 0, 0, 0);
-  if (next < today) next.setFullYear(today.getFullYear() + 1);
+  let next = clampedDate(today.getFullYear(), birth.getMonth(), birth.getDate());
+  if (next < today) next = clampedDate(today.getFullYear() + 1, birth.getMonth(), birth.getDate());
   return Math.max(0, next.getFullYear() - birth.getFullYear());
 };
 
@@ -574,7 +634,7 @@ export const getCelebrationYears = (person: Person): number => {
 // or one-time events).
 export const getYearsForOccurrence = (person: Person, gregYear: number): number | null => {
   if (!person.isRecurring || person.recurrence !== 'yearly') return null;
-  const birthYear = new Date(person.eventDate).getFullYear();
+  const birthYear = parseLocalDate(person.eventDate).getFullYear();
   if (isNaN(birthYear)) return null;
   return Math.max(0, gregYear - birthYear);
 };
@@ -583,6 +643,45 @@ export const getYearsForOccurrence = (person: Person, gregYear: number): number 
 // Back-compat: the old useHebrewDate boolean maps to 'hebrew'.
 export const getDateMode = (person: Person): 'gregorian' | 'hebrew' | 'both' =>
   person.dateMode || (person.useHebrewDate ? 'hebrew' : 'gregorian');
+
+// Does the event's GREGORIAN schedule (ignoring any Hebrew date) fall on the given day?
+// The single source of truth for the "today" banner, the calendar grid and notifications.
+export const gregorianOccursOn = (person: Person, date: Date): boolean => {
+  const ev = parseLocalDate(person.eventDate);
+  if (isNaN(ev.getTime())) return false;
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  if (d < ev) return false; // before the event's start date
+  const sameDay = (a: Date, b: Date) =>
+    a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  if (!person.isRecurring || person.recurrence === 'once') return sameDay(ev, d);
+  if (person.recurrence === 'weekly') return ev.getDay() === d.getDay();
+  if (person.recurrence === 'monthly') return sameDay(clampedDate(d.getFullYear(), d.getMonth(), ev.getDate()), d);
+  return sameDay(clampedDate(d.getFullYear(), ev.getMonth(), ev.getDate()), d);
+};
+
+// The next Gregorian occurrence on/after `today` (local midnight), or null for a one-time event
+// that has already passed.
+export const nextGregorianOccurrence = (person: Person, today: Date): Date | null => {
+  const ev = parseLocalDate(person.eventDate);
+  if (isNaN(ev.getTime())) return null;
+  // An event whose start date is still ahead first occurs on that date.
+  if (today < ev) return ev;
+  if (!person.isRecurring || person.recurrence === 'once') {
+    return ev.getTime() === today.getTime() ? ev : null;
+  }
+  if (person.recurrence === 'weekly') {
+    const diff = (ev.getDay() - today.getDay() + 7) % 7;
+    return new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff);
+  }
+  if (person.recurrence === 'monthly') {
+    const thisMonth = clampedDate(today.getFullYear(), today.getMonth(), ev.getDate());
+    if (thisMonth >= today) return thisMonth;
+    return clampedDate(today.getFullYear(), today.getMonth() + 1, ev.getDate());
+  }
+  const thisYear = clampedDate(today.getFullYear(), ev.getMonth(), ev.getDate());
+  if (thisYear >= today) return thisYear;
+  return clampedDate(today.getFullYear() + 1, ev.getMonth(), ev.getDate());
+};
 
 // For a given occurrence date, say whether it is the event's Hebrew anniversary, its Gregorian
 // anniversary, or both fall on the same day. Returns null when there is no Hebrew/Gregorian
@@ -604,12 +703,7 @@ export const getOccurrenceDateKind = (
   const hebMatch = !!hebAnniv && hebAnniv.getMonth() === d.getMonth() && hebAnniv.getDate() === d.getDate();
 
   // A Gregorian anniversary only co-exists when the event greets on both calendars.
-  let gregMatch = false;
-  if (mode === 'both') {
-    const ev = new Date(person.eventDate);
-    ev.setHours(0, 0, 0, 0);
-    gregMatch = ev.getMonth() === d.getMonth() && ev.getDate() === d.getDate();
-  }
+  const gregMatch = mode === 'both' && gregorianOccursOn(person, d);
 
   if (hebMatch && gregMatch) return 'both';
   if (hebMatch) return 'hebrew';
@@ -619,67 +713,13 @@ export const getOccurrenceDateKind = (
 };
 
 // Days until the next Gregorian anniversary of the Hebrew date.
-const hebrewDaysToEvent = (person: Person, today: Date): number => {
-  const next = nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today);
-  return Math.round((next.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-};
+const hebrewDaysToEvent = (person: Person, today: Date): number =>
+  daysBetween(today, nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today));
 
-// Gregorian days-to-next-occurrence (the original logic).
+// Gregorian days-to-next-occurrence; -1 for a one-time event that has already passed.
 const gregorianDaysToEvent = (person: Person, today: Date): number => {
-  const eventDate = new Date(person.eventDate);
-  eventDate.setHours(0, 0, 0, 0);
-
-  // If the event start date is in the future, return days until that date
-  if (today < eventDate) {
-    const diffTime = eventDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
-  if (!person.isRecurring || person.recurrence === 'once') {
-    // One time event that has already passed or is today
-    const targetDate = new Date(eventDate.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-    if (targetDate < today) {
-      // Already passed
-      return -1; // Indicates past event
-    }
-    const diffTime = targetDate.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
-  if (person.recurrence === 'weekly') {
-    // Weekly recurrence: next event occurs on the same day of week
-    const targetDayOfWeek = eventDate.getDay();
-    const todayDayOfWeek = today.getDay();
-    let daysDiff = targetDayOfWeek - todayDayOfWeek;
-    if (daysDiff < 0) {
-      daysDiff += 7;
-    }
-    return daysDiff === 0 ? 0 : daysDiff;
-  }
-
-  if (person.recurrence === 'monthly') {
-    // Monthly recurrence: next event occurs on the same day of month
-    let targetMonth = today.getMonth();
-    let targetYear = today.getFullYear();
-    if (today.getDate() > eventDate.getDate()) {
-      targetMonth++;
-      if (targetMonth > 11) {
-        targetMonth = 0;
-        targetYear++;
-      }
-    }
-    const nextEvent = new Date(targetYear, targetMonth, eventDate.getDate());
-    const diffTime = nextEvent.getTime() - today.getTime();
-    return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-  }
-
-  // Default: yearly recurrence
-  const nextEvent = new Date(today.getFullYear(), eventDate.getMonth(), eventDate.getDate());
-  if (nextEvent < today) {
-    nextEvent.setFullYear(today.getFullYear() + 1);
-  }
-  const diffTime = nextEvent.getTime() - today.getTime();
-  return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const next = nextGregorianOccurrence(person, today);
+  return next ? daysBetween(today, next) : -1;
 };
 
 // Days remaining until the next occurrence, respecting the event's dateMode
@@ -701,8 +741,6 @@ export const getDaysToEvent = (person: Person): number => {
 
 // Check if an event is happening today
 export const isEventToday = (person: Person): boolean => {
-  const eventDate = new Date(person.eventDate);
-  eventDate.setHours(0, 0, 0, 0);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const mode = getDateMode(person);
@@ -712,18 +750,7 @@ export const isEventToday = (person: Person): boolean => {
     nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today).getTime() === today.getTime();
   if (mode === 'hebrew') return hebToday;
 
-  const gregToday = (() => {
-    if (today < eventDate) return false;
-    if (!person.isRecurring || person.recurrence === 'once') {
-      return eventDate.getDate() === today.getDate() &&
-             eventDate.getMonth() === today.getMonth() &&
-             eventDate.getFullYear() === today.getFullYear();
-    }
-    if (person.recurrence === 'weekly') return eventDate.getDay() === today.getDay();
-    if (person.recurrence === 'monthly') return eventDate.getDate() === today.getDate();
-    return eventDate.getDate() === today.getDate() && eventDate.getMonth() === today.getMonth();
-  })();
-
+  const gregToday = gregorianOccursOn(person, today);
   if (mode === 'both') return gregToday || hebToday;
   return gregToday;
 };

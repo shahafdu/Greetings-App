@@ -75,7 +75,7 @@ export default {
 
     let body;
     try { body = await request.json(); } catch { return json({ error: 'bad json' }, 400, cors); }
-    if (!Array.isArray(body.messages) || body.messages.length === 0) {
+    if (!body || typeof body !== 'object' || !Array.isArray(body.messages) || body.messages.length === 0) {
       return json({ error: 'messages[] required' }, 400, cors);
     }
 
@@ -95,7 +95,11 @@ export default {
       model: ALLOWED_MODELS.has(body.model) ? body.model : DEFAULT_MODEL,
       messages: body.messages,
       temperature: typeof body.temperature === 'number' ? Math.min(Math.max(body.temperature, 0), 1.5) : 0.9,
-      max_tokens: Math.min(body.max_tokens || MAX_COMPLETION_TOKENS, MAX_COMPLETION_TOKENS),
+      // Only a positive integer may lower the cap. Anything else (a string, NaN, a negative)
+      // would otherwise serialize to null/garbage and lift the clamp upstream.
+      max_tokens: Number.isInteger(body.max_tokens) && body.max_tokens > 0
+        ? Math.min(body.max_tokens, MAX_COMPLETION_TOKENS)
+        : MAX_COMPLETION_TOKENS,
     };
 
     const r = await fetch(GROQ_URL, {
@@ -104,10 +108,16 @@ export default {
       body: JSON.stringify(payload),
     });
     const text = await r.text();
-    return new Response(text, { status: r.status, headers: { ...cors, 'Content-Type': 'application/json' } });
+    return new Response(text, {
+      status: r.status,
+      headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+    });
   },
 };
 
 function json(obj, status, cors) {
-  return new Response(JSON.stringify(obj), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
+  return new Response(JSON.stringify(obj), {
+    status,
+    headers: { ...cors, 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' },
+  });
 }

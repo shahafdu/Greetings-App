@@ -57,6 +57,7 @@ import {
   isEventToday,
   getDateMode,
   getOccurrenceDateKind,
+  gregorianOccursOn,
   getOccasionEmoji,
   getGenderLabel,
   getRelationCategory,
@@ -92,6 +93,9 @@ const HEBREW_MONTHS = [
   'ינואר', 'פברואר', 'מרץ', 'אפריל', 'מאי', 'יוני',
   'יולי', 'אוגוסט', 'ספטמבר', 'אוקטובר', 'נובמבר', 'דצמבר'
 ];
+
+// Minimum length for a new App Lock passphrase.
+const MIN_PASSPHRASE_LEN = 8;
 
 const WEEKDAYS = ["ראשון", "שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת"];
 
@@ -307,7 +311,7 @@ export default function App() {
   // Keep OS notifications in sync with the events (native/Android only; no-op on web).
   // Reschedules on every add/edit/delete and on app start.
   useEffect(() => {
-    scheduleEventNotifications(people);
+    scheduleEventNotifications(people).catch(err => console.error('Failed to schedule notifications:', err instanceof Error ? err.message : err));
   }, [people]);
 
   // Android hardware/gesture back button: step back WITHIN the app (close an open modal, the
@@ -452,6 +456,7 @@ export default function App() {
         const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
           headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
         });
+        if (!userInfoResponse.ok) throw new Error(`userinfo HTTP ${userInfoResponse.status}`);
         const userInfo = await userInfoResponse.json();
 
         // Persist the access token for this session so we can call Calendar/People APIs.
@@ -469,7 +474,7 @@ export default function App() {
         localStorage.setItem('birthday_greetings_google_auth_active', 'true');
         setIsLoggingIn(false);
       } catch (err) {
-        console.error('Failed to fetch user info:', err);
+        console.error('Failed to fetch user info:', err instanceof Error ? err.message : err);
         setIsLoggingIn(false);
       }
     },
@@ -516,6 +521,15 @@ export default function App() {
   const handleGoogleLogout = () => {
     if (Capacitor.isNativePlatform()) {
       GoogleSignIn.signOut().catch(() => { /* ignore */ });
+    }
+    // Revoke the access token so it stops working immediately, rather than staying valid
+    // (for up to an hour) after the user has "disconnected". Best-effort.
+    if (googleAccessToken) {
+      fetch('https://oauth2.googleapis.com/revoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: `token=${encodeURIComponent(googleAccessToken)}`
+      }).catch(() => { /* ignore */ });
     }
     const updatedSettings = {
       ...settings,
@@ -702,15 +716,23 @@ export default function App() {
   // Enable the App Lock: encrypt current data behind a new passphrase (+ optional biometric).
   const handleEnableLock = async () => {
     setLockSetupError('');
-    if (newPassphrase.length < 4) {
-      setLockSetupError('הסיסמה חייבת להכיל לפחות 4 תווים.');
+    // The passphrase is the only thing protecting the encrypted data from an offline guessing
+    // attack, so a very short one gives no real protection.
+    if (newPassphrase.length < MIN_PASSPHRASE_LEN) {
+      setLockSetupError(`הסיסמה חייבת להכיל לפחות ${MIN_PASSPHRASE_LEN} תווים.`);
       return;
     }
     if (newPassphrase !== confirmPassphrase) {
       setLockSetupError('הסיסמאות אינן תואמות.');
       return;
     }
-    await enableLock(newPassphrase);
+    try {
+      await enableLock(newPassphrase);
+    } catch (err) {
+      console.error('Failed to enable lock:', err instanceof Error ? err.message : err);
+      setLockSetupError('הפעלת הנעילה נכשלה — הנתונים נשארו ללא שינוי.');
+      return;
+    }
     if (useBiometricChecked && biometricSupported) {
       try {
         await enableBiometric(newPassphrase);
@@ -934,7 +956,9 @@ export default function App() {
     };
 
     if (editingPerson) {
-      updatePerson({ ...personData, id: editingPerson.id });
+      // Start from the stored event so fields the form doesn't edit (saved drafts) survive.
+      const stored = getPeople().find(p => p.id === editingPerson.id) || editingPerson;
+      updatePerson({ ...stored, ...personData, id: editingPerson.id });
     } else {
       addPerson(personData);
     }
@@ -1117,9 +1141,12 @@ export default function App() {
 
   // Copy Greeting
   const handleCopyGreeting = () => {
-    navigator.clipboard.writeText(greetingText);
-    setCopyFeedback(true);
-    setTimeout(() => setCopyFeedback(false), 2000);
+    navigator.clipboard?.writeText(greetingText)
+      .then(() => {
+        setCopyFeedback(true);
+        setTimeout(() => setCopyFeedback(false), 2000);
+      })
+      .catch(() => { /* clipboard unavailable or permission denied */ });
   };
 
   // Send via WhatsApp
@@ -1344,17 +1371,7 @@ export default function App() {
     })();
     if (mode === 'hebrew') return hebMatch;
 
-    const gregMatch = (() => {
-      const pDate = new Date(p.eventDate);
-      pDate.setHours(0, 0, 0, 0);
-      if (cellDate < pDate) return false;
-      if (!p.isRecurring || p.recurrence === 'once') {
-        return pDate.getFullYear() === cellDate.getFullYear() && pDate.getMonth() === cellDate.getMonth() && pDate.getDate() === cellDate.getDate();
-      }
-      if (p.recurrence === 'weekly') return pDate.getDay() === cellDate.getDay();
-      if (p.recurrence === 'monthly') return pDate.getDate() === cellDate.getDate();
-      return pDate.getDate() === cellDate.getDate() && pDate.getMonth() === cellDate.getMonth();
-    })();
+    const gregMatch = gregorianOccursOn(p, cellDate);
 
     if (mode === 'both') return gregMatch || hebMatch;
     return gregMatch;
@@ -1554,7 +1571,7 @@ export default function App() {
               type="button"
               className="btn btn-primary"
               style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.8rem' }}
-              onClick={() => window.open(updateInfo.url, '_blank')}
+              onClick={() => window.open(updateInfo.url, '_blank', 'noopener,noreferrer')}
             >
               הורד/י
             </button>
@@ -3176,14 +3193,14 @@ export default function App() {
                 <p style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.75rem', lineHeight: '1.5' }}>
                   {t('הקובץ מוכן. שתף/י אותו, ושלח/י את הקוד')} <strong>{t('בנפרד')}</strong>:
                 </p>
-                <div style={{ textAlign: 'center', fontSize: '1.8rem', fontWeight: 800, letterSpacing: '4px', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', fontFamily: 'var(--font-numbers)' }}>
+                <div dir="ltr" style={{ textAlign: 'center', fontSize: '1.5rem', fontWeight: 800, letterSpacing: '3px', overflowWrap: 'anywhere', background: 'rgba(255,255,255,0.06)', borderRadius: '8px', padding: '0.75rem', marginBottom: '1rem', fontFamily: 'var(--font-numbers)' }}>
                   {shareCode}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
                   <button type="button" className="btn btn-primary" style={{ flex: 1, minWidth: '160px' }} onClick={handleSendShareFile}>
                     <FileText size={16} /> <span>{Capacitor.isNativePlatform() ? t('שתף/י קובץ גיבוי') : t('הורד/י קובץ גיבוי')}</span>
                   </button>
-                  <button type="button" className="icon-btn" title={t('העתק קוד')} onClick={() => navigator.clipboard?.writeText(shareCode)}><Copy size={18} /></button>
+                  <button type="button" className="icon-btn" title={t('העתק קוד')} onClick={() => { navigator.clipboard?.writeText(shareCode).catch(() => { /* ignore */ }); }}><Copy size={18} /></button>
                 </div>
                 <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '0.75rem', lineHeight: '1.5' }}>
                   {Capacitor.isNativePlatform()
@@ -3219,7 +3236,7 @@ export default function App() {
 
                 <div className="form-group">
                   <label className="form-label" htmlFor="import-code">{t('קוד הפענוח')}</label>
-                  <input id="import-code" type="text" className="form-input numbers-font" placeholder={t('6 תווים')} value={importCode}
+                  <input id="import-code" type="text" className="form-input numbers-font" placeholder={t('הקוד שקיבלת')} value={importCode} autoComplete="off" autoCapitalize="characters" spellCheck={false}
                     onChange={(e) => setImportCode(e.target.value)} style={{ letterSpacing: '3px', textAlign: 'center' }} />
                 </div>
 

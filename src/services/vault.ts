@@ -10,7 +10,12 @@
 // Caveat by design: because the key is derived from the passphrase and never stored, a
 // forgotten passphrase means the local data is unrecoverable.
 
-const VAULT_META_KEY = 'birthday_greetings_vault_meta'; // { salt: base64 }
+const VAULT_META_KEY = 'birthday_greetings_vault_meta'; // { salt: base64, iterations?: number }
+
+// PBKDF2-SHA256 work factor. New vaults use the current OWASP-recommended count and record it in
+// the meta; vaults created before the count was stored used LEGACY_ITERATIONS and keep working.
+const KDF_ITERATIONS = 600000;
+const LEGACY_ITERATIONS = 200000;
 
 let activeKey: CryptoKey | null = null;
 
@@ -26,7 +31,7 @@ const toB64 = (buf: ArrayBuffer | Uint8Array): string => {
 
 const fromB64 = (s: string): Uint8Array => Uint8Array.from(atob(s), c => c.charCodeAt(0));
 
-const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKey> => {
+const deriveKey = async (passphrase: string, salt: Uint8Array, iterations: number): Promise<CryptoKey> => {
   const baseKey = await crypto.subtle.importKey(
     'raw',
     encoder.encode(passphrase),
@@ -35,7 +40,7 @@ const deriveKey = async (passphrase: string, salt: Uint8Array): Promise<CryptoKe
     ['deriveKey']
   );
   return crypto.subtle.deriveKey(
-    { name: 'PBKDF2', salt: salt as BufferSource, iterations: 200000, hash: 'SHA-256' },
+    { name: 'PBKDF2', salt: salt as BufferSource, iterations, hash: 'SHA-256' },
     baseKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -52,8 +57,8 @@ export const isVaultUnlocked = (): boolean => activeKey !== null;
 // Set up the lock for the first time: generate a salt and derive+hold the key.
 export const setupVaultKey = async (passphrase: string): Promise<void> => {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  activeKey = await deriveKey(passphrase, salt);
-  localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: toB64(salt) }));
+  activeKey = await deriveKey(passphrase, salt, KDF_ITERATIONS);
+  localStorage.setItem(VAULT_META_KEY, JSON.stringify({ salt: toB64(salt), iterations: KDF_ITERATIONS }));
 };
 
 // Derive and hold the key from a passphrase using the stored salt. Does not verify the
@@ -62,8 +67,11 @@ export const loadVaultKey = async (passphrase: string): Promise<boolean> => {
   const meta = localStorage.getItem(VAULT_META_KEY);
   if (!meta) return false;
   try {
-    const { salt } = JSON.parse(meta) as { salt: string };
-    activeKey = await deriveKey(passphrase, fromB64(salt));
+    const { salt, iterations } = JSON.parse(meta) as { salt: string; iterations?: number };
+    const rounds = typeof iterations === 'number' && Number.isInteger(iterations) && iterations >= LEGACY_ITERATIONS
+      ? iterations
+      : LEGACY_ITERATIONS;
+    activeKey = await deriveKey(passphrase, fromB64(salt), rounds);
     return true;
   } catch {
     return false;

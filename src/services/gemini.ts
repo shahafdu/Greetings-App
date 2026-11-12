@@ -187,6 +187,8 @@ const callGemini = async (prompt: string, apiKey: string, model: string): Promis
   return (await result.response).text().trim();
 };
 
+const AI_REQUEST_TIMEOUT_MS = 45000;
+
 // Shared helper for OpenAI-compatible chat-completions endpoints (Groq, OpenRouter).
 const callOpenAICompatible = async (
   url: string,
@@ -195,18 +197,36 @@ const callOpenAICompatible = async (
   model: string,
   extraHeaders: Record<string, string> = {}
 ): Promise<string> => {
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}`, ...extraHeaders },
-    body: JSON.stringify({ model, temperature: 0.9, messages: [{ role: 'user', content: prompt }] })
-  });
-  if (!res.ok) {
-    let detail = `HTTP ${res.status}`;
-    try { detail = (await res.json())?.error?.message || detail; } catch { /* keep status */ }
-    throw new Error(detail);
+  // Abort a hung request so the UI can't be stuck on "generating" forever.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
+  try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json', ...extraHeaders };
+    if (apiKey) headers.Authorization = `Bearer ${apiKey}`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ model, temperature: 0.9, messages: [{ role: 'user', content: prompt }] }),
+      signal: controller.signal
+    });
+    if (!res.ok) {
+      let detail = `HTTP ${res.status}`;
+      try {
+        const err = (await res.json())?.error;
+        const message = typeof err === 'string' ? err : err?.message;
+        if (typeof message === 'string' && message) detail = message.slice(0, 300);
+      } catch { /* keep status */ }
+      throw new Error(detail);
+    }
+    const data = await res.json();
+    const content = data?.choices?.[0]?.message?.content;
+    return typeof content === 'string' ? content.trim() : '';
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') throw new Error('timeout', { cause: error });
+    throw error;
+  } finally {
+    clearTimeout(timer);
   }
-  const data = await res.json();
-  return (data.choices?.[0]?.message?.content || '').trim();
 };
 
 const callGroq = (prompt: string, apiKey: string, model: string): Promise<string> =>

@@ -31,10 +31,14 @@ export const checkForUpdate = async (): Promise<UpdateInfo | null> => {
     const data = await res.json();
     const m = `${data.name || ''} ${data.body || ''}`.match(/build[\s:#]*?(\d+)/i);
     const latestBuild = m ? parseInt(m[1], 10) : 0;
-    const url = data.html_url || `https://github.com/${REPO}/releases`;
+    // Only ever open a link to this repo's own releases, whatever the response contains.
+    const fallbackUrl = `https://github.com/${REPO}/releases`;
+    const url = typeof data.html_url === 'string' && data.html_url.startsWith(`${fallbackUrl}/`)
+      ? data.html_url
+      : fallbackUrl;
 
     if (latestBuild > currentBuild) {
-      return { available: true, url, label: data.name || `Build ${latestBuild}` };
+      return { available: true, url, label: typeof data.name === 'string' && data.name ? data.name.slice(0, 60) : `Build ${latestBuild}` };
     }
     return { available: false, url, label: '' };
   } catch {

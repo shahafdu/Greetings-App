@@ -44,6 +44,9 @@ const googleGet = async (url: string, accessToken: string): Promise<any> => {
   return res.json();
 };
 
+// Upper bound on pages fetched per sync, so a misbehaving response can't loop forever.
+const MAX_PAGES = 20;
+
 const mapGender = (value?: string): 'Male' | 'Female' | undefined => {
   if (value === 'male') return 'Male';
   if (value === 'female') return 'Female';
@@ -60,13 +63,21 @@ const buildBirthday = (date?: { year?: number; month?: number; day?: number }): 
 };
 
 export const fetchGoogleContacts = async (accessToken: string): Promise<GoogleContact[]> => {
-  const url =
+  const baseUrl =
     'https://people.googleapis.com/v1/people/me/connections' +
     '?personFields=names,phoneNumbers,genders,birthdays' +
-    '&pageSize=200&sortOrder=FIRST_NAME_ASCENDING';
+    '&pageSize=1000&sortOrder=FIRST_NAME_ASCENDING';
 
-  const data = await googleGet(url, accessToken);
-  const connections: any[] = data.connections || [];
+  // The API returns one page at a time — follow nextPageToken so accounts with more contacts
+  // than one page aren't silently truncated.
+  const connections: any[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await googleGet(baseUrl + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''), accessToken);
+    connections.push(...(data.connections || []));
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
+  }
 
   return connections
     .map((c): GoogleContact | null => {
@@ -94,20 +105,28 @@ export const fetchGoogleCalendarEvents = async (accessToken: string): Promise<Go
   const timeMax = new Date(timeMin);
   timeMax.setMonth(timeMax.getMonth() + 13);
 
-  const url =
+  const baseUrl =
     'https://www.googleapis.com/calendar/v3/calendars/primary/events' +
     `?timeMin=${encodeURIComponent(timeMin.toISOString())}` +
     `&timeMax=${encodeURIComponent(timeMax.toISOString())}` +
     '&maxResults=250&singleEvents=true&orderBy=startTime';
 
-  const data = await googleGet(url, accessToken);
-  const items: any[] = data.items || [];
+  // Busy calendars exceed one page over 13 months — follow nextPageToken so later months
+  // aren't silently missing.
+  const items: any[] = [];
+  let pageToken: string | undefined;
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const data = await googleGet(baseUrl + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : ''), accessToken);
+    items.push(...(data.items || []));
+    pageToken = data.nextPageToken;
+    if (!pageToken) break;
+  }
 
   return items
     .map((e): GoogleCalendarEvent | null => {
       const title = e.summary;
       const rawDate: string | undefined = e.start?.date || e.start?.dateTime;
-      if (!title || !rawDate) return null;
+      if (!e.id || typeof title !== 'string' || !title || typeof rawDate !== 'string') return null;
       return { id: e.id, title, date: rawDate.slice(0, 10) };
     })
     .filter((e): e is GoogleCalendarEvent => e !== null);

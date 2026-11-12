@@ -6,7 +6,7 @@
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import type { Person } from './storage';
-import { getOccasionEmoji, getDateMode, getOccurrenceDateKind, getSettings } from './storage';
+import { getOccasionEmoji, getDateMode, getOccurrenceDateKind, getSettings, nextGregorianOccurrence } from './storage';
 import { nextHebrewOccurrence } from './hebrewDate';
 
 // Hebrew note for whether a notification's occurrence is the Hebrew or Gregorian date. Shown only
@@ -20,34 +20,6 @@ const dateKindNote = (person: Person, occurrence: Date): string => {
   return '';
 };
 
-// Next Gregorian occurrence (ignores the Hebrew date).
-const gregorianNext = (person: Person, today: Date): Date | null => {
-  const ev = new Date(person.eventDate);
-  ev.setHours(0, 0, 0, 0);
-  if (!person.isRecurring || person.recurrence === 'once') {
-    return ev >= today ? ev : null;
-  }
-  if (person.recurrence === 'weekly') {
-    let diff = ev.getDay() - today.getDay();
-    if (diff < 0) diff += 7;
-    const d = new Date(today);
-    d.setDate(today.getDate() + diff);
-    return d;
-  }
-  if (person.recurrence === 'monthly') {
-    let month = today.getMonth();
-    let year = today.getFullYear();
-    if (today.getDate() > ev.getDate()) {
-      month++;
-      if (month > 11) { month = 0; year++; }
-    }
-    return new Date(year, month, ev.getDate());
-  }
-  const next = new Date(today.getFullYear(), ev.getMonth(), ev.getDate());
-  if (next < today) next.setFullYear(today.getFullYear() + 1);
-  return next;
-};
-
 // The next date this event occurs on, respecting its dateMode (gregorian/hebrew/both = sooner).
 const nextOccurrenceDate = (person: Person): Date | null => {
   const today = new Date();
@@ -56,7 +28,7 @@ const nextOccurrenceDate = (person: Person): Date | null => {
   const hasHeb = !!(person.hebrewDay && person.hebrewMonth);
   const heb = hasHeb ? nextHebrewOccurrence(person.hebrewDay!, person.hebrewMonth!, today) : null;
   if (mode === 'hebrew') return heb;
-  const greg = gregorianNext(person, today);
+  const greg = nextGregorianOccurrence(person, today);
   if (mode === 'both') {
     const cands = [greg, heb].filter((d): d is Date => !!d);
     return cands.length ? cands.reduce((a, b) => (a.getTime() <= b.getTime() ? a : b)) : null;
@@ -91,14 +63,18 @@ export const scheduleEventNotifications = async (people: Person[]): Promise<void
       const occurrence = nextOccurrenceDate(p);
       if (!occurrence) return null;
 
+      // Note: 0 is a valid hour/minute (midnight), so only fall back when the value is malformed.
       const [hh, mm] = (p.notifyHour || '09:00').split(':').map(Number);
+      const hour = Number.isInteger(hh) && hh >= 0 && hh <= 23 ? hh : 9;
+      const minute = Number.isInteger(mm) && mm >= 0 && mm <= 59 ? mm : 0;
+      const daysBefore = Number.isFinite(p.notifyDaysBefore) && p.notifyDaysBefore > 0 ? Math.floor(p.notifyDaysBefore) : 0;
       const at = new Date(occurrence);
-      at.setDate(at.getDate() - (p.notifyDaysBefore || 0));
-      at.setHours(hh || 9, mm || 0, 0, 0);
+      at.setDate(at.getDate() - daysBefore);
+      at.setHours(hour, minute, 0, 0);
       if (at.getTime() <= now) return null; // already passed
 
       const fullName = `${p.firstName}${p.lastName ? ' ' + p.lastName : ''}`;
-      const days = p.notifyDaysBefore || 0;
+      const days = daysBefore;
       const when = days === 0 ? 'היום' : days === 1 ? 'מחר' : `בעוד ${days} ימים`;
       const dateNote = dateKindNote(p, occurrence);
 
