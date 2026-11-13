@@ -11,6 +11,22 @@ export const isRTL = (): boolean => current === 'he';
 
 // English translations keyed by the Hebrew source string.
 const EN: Record<string, string> = {
+  // App updates
+  'בנייה': 'Build',
+  'עדכן/י': 'Update',
+  'עדכוני גרסה': 'App updates',
+  'גרסת הדפדפן מתעדכנת אוטומטית — אין צורך לעדכן.': 'The web version updates automatically — nothing to install.',
+  'הגרסה המותקנת': 'Installed version',
+  'הגרסה האחרונה': 'Latest version',
+  'בודק עדכונים...': 'Checking for updates...',
+  'עדיין לא נבדק.': 'Not checked yet.',
+  'גרסה חדשה זמינה!': 'A new version is available!',
+  'הגרסה שלך עדכנית.': 'You have the latest version.',
+  'לא ניתן לבדוק עדכונים כרגע. בדוק/י את החיבור לאינטרנט ונסה/י שוב.': "Couldn't check for updates right now. Check your internet connection and try again.",
+  'נבדק לאחרונה:': 'Last checked:',
+  'בדוק/י עדכונים': 'Check for updates',
+  'עדכן/י לבנייה': 'Update to build',
+  'הקובץ יורד ונפתח להתקנה. הנתונים שלך נשמרים — העדכון מותקן מעל הגרסה הקיימת.': 'The file downloads and opens the installer. Your data is kept — the update installs over the current version.',
   // App chrome / tabs
   'מזל טוב!': 'Congrats!',
   'מנהל אירועים וברכות חכמות': 'Smart events & greetings manager',

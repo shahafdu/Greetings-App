@@ -79,7 +79,7 @@ import type { AiProvider } from './services/storage';
 import { generateHebrewBirthdayGreeting, testAiApiKey, fetchOpenRouterFreeModels, AI_PROXY_URL } from './services/gemini';
 import { MAX_CUSTOM_INSTRUCTION_LEN } from './services/aiGuard';
 import { gregToHebrew, formatHebrewDate, HEBREW_MONTHS as JEWISH_MONTHS, hebrewAnniversaryInGregYear, hebrewDayLabel, hebrewMonthYearLabel, dayGematriya } from './services/hebrewDate';
-import { checkForUpdate, type UpdateInfo } from './services/updateCheck';
+import { checkForUpdate, getInstalledBuild, type UpdateInfo } from './services/updateCheck';
 import { generateShareCode, encryptEvents, decryptEvents, pickBackupSettings, type PortableEvent } from './services/share';
 import { t, setLang } from './i18n';
 import { scheduleEventNotifications } from './services/notifications';
@@ -189,7 +189,12 @@ export default function App() {
   const [showHebrewEdit, setShowHebrewEdit] = useState(false);
   // In-app update prompt (GitHub Releases)
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [updateDismissed, setUpdateDismissed] = useState(false);
+  // The build whose banner the user closed — a NEWER build brings the banner back.
+  const [dismissedUpdateBuild, setDismissedUpdateBuild] = useState<number | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [installedBuild, setInstalledBuild] = useState<number | null>(null);
+  const updateCheckInFlight = useRef(false);
+  const lastAutoUpdateCheck = useRef(0);
   // Share / import events
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareSelectedIds, setShareSelectedIds] = useState<Set<string>>(new Set());
@@ -342,10 +347,48 @@ export default function App() {
     return () => { if (remove) remove(); };
   }, [showEventForm, showContactsModal, showGreetingModal, showShareModal, showImportModal, selectedDay, activeTab]);
 
-  // Check GitHub Releases for a newer build on every launch (no-ops while the repo is private).
+  // Check GitHub Releases for a newer build. `manual` = the Settings button (always runs);
+  // automatic checks (every app open) are skipped if one ran in the last 30s, so quickly
+  // switching apps doesn't burn GitHub's unauthenticated rate limit.
+  const runUpdateCheck = async (manual = false) => {
+    if (updateCheckInFlight.current) return;
+    if (!manual && Date.now() - lastAutoUpdateCheck.current < 30000) return;
+    updateCheckInFlight.current = true;
+    lastAutoUpdateCheck.current = Date.now();
+    setUpdateChecking(true);
+    try {
+      const info = await checkForUpdate();
+      setUpdateInfo(info);
+      if (info.currentBuild !== null) setInstalledBuild(info.currentBuild);
+    } finally {
+      updateCheckInFlight.current = false;
+      setUpdateChecking(false);
+    }
+  };
+
+  // Check on every opening of the app: at launch, and whenever it returns to the foreground.
   useEffect(() => {
-    checkForUpdate().then(info => { if (info?.available) setUpdateInfo(info); });
+    getInstalledBuild().then(setInstalledBuild);
+    runUpdateCheck();
+    if (!Capacitor.isNativePlatform()) return;
+    let remove: (() => void) | undefined;
+    let cancelled = false;
+    (async () => {
+      const { App } = await import('@capacitor/app');
+      const handle = await App.addListener('appStateChange', ({ isActive }) => {
+        if (isActive) runUpdateCheck();
+      });
+      if (cancelled) handle.remove(); else remove = () => { handle.remove(); };
+    })();
+    return () => { cancelled = true; if (remove) remove(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Download the new APK (opens Android's installer once downloaded).
+  const handleDownloadUpdate = () => {
+    if (!updateInfo) return;
+    window.open(updateInfo.downloadUrl, '_blank', 'noopener,noreferrer');
+  };
 
   // Apply UI language + document direction (RTL for Hebrew, LTR for English).
   useEffect(() => {
@@ -1560,19 +1603,22 @@ export default function App() {
       </header>
 
       {/* Update-available banner */}
-      {updateInfo?.available && !updateDismissed && (
+      {updateInfo?.available && updateInfo.latestBuild !== dismissedUpdateBuild && (
         <div className="update-banner">
-          <span>🔄 {t('גרסה חדשה זמינה')}{updateInfo.label ? ` (${updateInfo.label})` : ''}</span>
+          <span>
+            🔄 {t('גרסה חדשה זמינה')}{' '}
+            ({t('בנייה')} <span className="numbers-font" dir="ltr">{updateInfo.currentBuild} → {updateInfo.latestBuild}</span>)
+          </span>
           <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <button
               type="button"
               className="btn btn-primary"
               style={{ width: 'auto', padding: '0.3rem 0.7rem', fontSize: '0.8rem' }}
-              onClick={() => window.open(updateInfo.url, '_blank', 'noopener,noreferrer')}
+              onClick={handleDownloadUpdate}
             >
-              הורד/י
+              {t('עדכן/י')}
             </button>
-            <button type="button" className="icon-btn" onClick={() => setUpdateDismissed(true)} title="סגור">
+            <button type="button" className="icon-btn" onClick={() => setDismissedUpdateBuild(updateInfo.latestBuild)} title={t('סגור')}>
               <X size={16} />
             </button>
           </div>
@@ -2757,6 +2803,64 @@ export default function App() {
                 <option value="he">עברית</option>
                 <option value="en">English</option>
               </select>
+            </div>
+
+            {/* App updates */}
+            <div className="glass-card" style={{ padding: '1.25rem 1.5rem', marginBottom: '2rem', border: '1px solid rgba(255,255,255,0.08)' }} id="settings-updates">
+              <div className="form-label" style={{ marginBottom: '0.75rem' }}>🔄 {t('עדכוני גרסה')}</div>
+              {!Capacitor.isNativePlatform() ? (
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', margin: 0 }}>
+                  {t('גרסת הדפדפן מתעדכנת אוטומטית — אין צורך לעדכן.')}
+                </p>
+              ) : (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.85rem' }}>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t('הגרסה המותקנת')}</div>
+                      <div style={{ fontWeight: 800, fontSize: '1.1rem' }} id="installed-build">
+                        {installedBuild !== null ? <>{t('בנייה')} <span className="numbers-font">{installedBuild}</span></> : '—'}
+                      </div>
+                    </div>
+                    <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: '8px', padding: '0.6rem 0.75rem' }}>
+                      <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>{t('הגרסה האחרונה')}</div>
+                      <div style={{ fontWeight: 800, fontSize: '1.1rem', color: updateInfo?.available ? 'var(--success)' : undefined }} id="latest-build">
+                        {updateInfo?.latestBuild != null ? <>{t('בנייה')} <span className="numbers-font">{updateInfo.latestBuild}</span></> : '—'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: '0.85rem', margin: '0 0 0.85rem', color: updateInfo?.status === 'error' ? 'var(--danger)' : updateInfo?.available ? 'var(--success)' : 'var(--text-secondary)' }} id="update-status">
+                    {updateChecking
+                      ? t('בודק עדכונים...')
+                      : !updateInfo
+                        ? t('עדיין לא נבדק.')
+                        : updateInfo.status === 'available'
+                          ? `✨ ${t('גרסה חדשה זמינה!')}`
+                          : updateInfo.status === 'up-to-date'
+                            ? `✅ ${t('הגרסה שלך עדכנית.')}`
+                            : `⚠️ ${t('לא ניתן לבדוק עדכונים כרגע. בדוק/י את החיבור לאינטרנט ונסה/י שוב.')}`}
+                    {updateInfo && !updateChecking && (
+                      <span style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>
+                        {t('נבדק לאחרונה:')} <span className="numbers-font" dir="ltr">{new Date(updateInfo.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                      </span>
+                    )}
+                  </p>
+
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                    <button type="button" className="btn btn-secondary" style={{ width: 'auto', flex: 1, minWidth: '140px' }} onClick={() => runUpdateCheck(true)} disabled={updateChecking} id="btn-check-updates">
+                      {updateChecking ? t('בודק...') : `🔍 ${t('בדוק/י עדכונים')}`}
+                    </button>
+                    <button type="button" className="btn btn-primary" style={{ width: 'auto', flex: 1, minWidth: '140px' }} onClick={handleDownloadUpdate} disabled={!updateInfo?.available || updateChecking} id="btn-install-update">
+                      ⬇️ {updateInfo?.available && updateInfo.latestBuild != null ? `${t('עדכן/י לבנייה')} ${updateInfo.latestBuild}` : t('עדכן/י')}
+                    </button>
+                  </div>
+                  {updateInfo?.available && (
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: '0.6rem 0 0', lineHeight: '1.4' }}>
+                      {t('הקובץ יורד ונפתח להתקנה. הנתונים שלך נשמרים — העדכון מותקן מעל הגרסה הקיימת.')}
+                    </p>
+                  )}
+                </>
+              )}
             </div>
 
             {/* Share / import events */}

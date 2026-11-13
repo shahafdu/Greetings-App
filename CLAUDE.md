@@ -16,7 +16,8 @@ npm run build    # tsc -b && vite build  — ALWAYS run this to verify before co
 npm test         # vitest unit tests (tests/) — ALWAYS run before committing; CI runs them too
 npm run lint     # eslint (optional)
 ```
-Tests in `tests/` cover storage / App Lock, dates + list order, share-file import and the Worker.
+Tests in `tests/` cover storage / App Lock, dates + list order, share-file import, the update
+check and the Worker.
 Add a test when you touch that logic. UI changes still need a manual check in the browser.
 
 **Android (Capacitor, scaffolded 2026-06-28):**
