@@ -218,6 +218,12 @@ let peopleCache: Person[] | null = null;
 let settingsCache: AppSettings | null = null;
 let quickDraftsCache: QuickDraft[] | null = null;
 
+// The short-lived Google OAuth access token. Without the App Lock it lives in its own plain
+// localStorage key (so the connection survives a restart). With the App Lock on it is kept in
+// memory and persisted ONLY inside the encrypted blob, so nothing readable sits next to the vault.
+const GOOGLE_TOKEN_KEY = 'birthday_greetings_google_token';
+let googleTokenCache: string | null = null;
+
 const migratePeople = (parsed: any[]): Person[] => parsed.filter(p => p && typeof p === 'object').map(p => {
   let firstName = p.firstName || '';
   let lastName = p.lastName || '';
@@ -329,7 +335,7 @@ const persist = (): void => {
       encryptedWriteChain = encryptedWriteChain.then(async () => {
         // The lock may have been disabled (or the key dropped) while this write was queued.
         if (!isVaultEnabled() || !isVaultUnlocked()) return;
-        const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache, quickDrafts: quickDraftsCache || [] });
+        const payload = JSON.stringify({ people: peopleCache || [], settings: settingsCache, quickDrafts: quickDraftsCache || [], googleToken: googleTokenCache || undefined });
         const blob = await encryptString(payload);
         if (isVaultEnabled() && isVaultUnlocked()) localStorage.setItem(VAULT_DATA_KEY, blob);
       }).catch(err => {
@@ -369,6 +375,16 @@ export const initStorage = (): 'ready' | 'locked' => {
   return 'ready';
 };
 
+// With the App Lock on, a Google token found in the plain key is taken into memory and the plain
+// copy removed. Returns whether anything was moved (so the caller can re-persist encrypted).
+const adoptPlainGoogleToken = (): boolean => {
+  const plain = localStorage.getItem(GOOGLE_TOKEN_KEY);
+  if (!plain) return false;
+  if (!googleTokenCache) googleTokenCache = plain;
+  localStorage.removeItem(GOOGLE_TOKEN_KEY);
+  return true;
+};
+
 // Unlock the encrypted vault with a passphrase, decrypting data into the caches.
 export const unlockStorage = async (passphrase: string): Promise<boolean> => {
   if (!(await loadVaultKey(passphrase))) return false;
@@ -380,6 +396,7 @@ export const unlockStorage = async (passphrase: string): Promise<boolean> => {
     peopleCache = loadPlainPeople();
     settingsCache = loadPlainSettings();
     quickDraftsCache = loadPlainQuickDrafts();
+    adoptPlainGoogleToken();
     return true;
   }
   let plaintext: string;
@@ -390,10 +407,13 @@ export const unlockStorage = async (passphrase: string): Promise<boolean> => {
     return false;
   }
   try {
-    const data = JSON.parse(plaintext) as { people?: any[]; settings?: Partial<AppSettings>; quickDrafts?: QuickDraft[] };
+    const data = JSON.parse(plaintext) as { people?: any[]; settings?: Partial<AppSettings>; quickDrafts?: QuickDraft[]; googleToken?: unknown };
     peopleCache = migratePeople(Array.isArray(data.people) ? data.people : []);
     settingsCache = applySettingsDefaults(data.settings && typeof data.settings === 'object' ? data.settings : null);
     quickDraftsCache = Array.isArray(data.quickDrafts) ? data.quickDrafts : [];
+    googleTokenCache = typeof data.googleToken === 'string' && data.googleToken ? data.googleToken : null;
+    // A lock enabled by an older version left the token in its plain key — move it inside.
+    if (adoptPlainGoogleToken()) persist();
     return true;
   } catch {
     clearVaultKey();
@@ -408,9 +428,10 @@ export const enableLock = async (passphrase: string): Promise<void> => {
   if (!peopleCache) peopleCache = loadPlainPeople();
   if (!settingsCache) settingsCache = loadPlainSettings();
   if (!quickDraftsCache) quickDraftsCache = loadPlainQuickDrafts();
+  const plainToken = localStorage.getItem(GOOGLE_TOKEN_KEY);
   await setupVaultKey(passphrase);
   try {
-    const payload = JSON.stringify({ people: peopleCache, settings: settingsCache, quickDrafts: quickDraftsCache });
+    const payload = JSON.stringify({ people: peopleCache, settings: settingsCache, quickDrafts: quickDraftsCache, googleToken: plainToken || undefined });
     const blob = await encryptString(payload);
     localStorage.setItem(VAULT_DATA_KEY, blob);
     if (localStorage.getItem(VAULT_DATA_KEY) !== blob) {
@@ -428,6 +449,8 @@ export const enableLock = async (passphrase: string): Promise<void> => {
   localStorage.removeItem(SETTINGS_STORAGE_KEY);
   localStorage.removeItem(PEOPLE_MIRROR_KEY);
   localStorage.removeItem(QUICK_DRAFTS_STORAGE_KEY);
+  googleTokenCache = plainToken;
+  localStorage.removeItem(GOOGLE_TOKEN_KEY);
 };
 
 // Turn off the App Lock: write the data back as plaintext and remove the vault.
@@ -439,8 +462,26 @@ export const disableLock = (): void => {
   }
   if (settingsCache) localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settingsCache));
   if (quickDraftsCache) localStorage.setItem(QUICK_DRAFTS_STORAGE_KEY, JSON.stringify(quickDraftsCache));
+  if (googleTokenCache) localStorage.setItem(GOOGLE_TOKEN_KEY, googleTokenCache);
+  googleTokenCache = null;
   localStorage.removeItem(VAULT_DATA_KEY);
   removeVault();
+};
+
+// The saved Google access token (null when none, or while the app is still locked).
+export const getGoogleToken = (): string | null =>
+  isVaultEnabled() ? googleTokenCache : localStorage.getItem(GOOGLE_TOKEN_KEY);
+
+// Save (or, with null, forget) the Google access token — encrypted when the App Lock is on.
+export const saveGoogleToken = (token: string | null): void => {
+  if (isVaultEnabled()) {
+    googleTokenCache = token;
+    localStorage.removeItem(GOOGLE_TOKEN_KEY);
+    persist();
+    return;
+  }
+  if (token) localStorage.setItem(GOOGLE_TOKEN_KEY, token);
+  else localStorage.removeItem(GOOGLE_TOKEN_KEY);
 };
 
 export const isLockEnabled = (): boolean => isVaultEnabled();
@@ -479,7 +520,15 @@ export const updatePerson = (updatedPerson: Person): void => {
 };
 
 export const deletePerson = (id: string): void => {
-  savePeople(getPeople().filter(p => p.id !== id));
+  const people = getPeople();
+  const next = people.filter(p => p.id !== id);
+  if (next.length === people.length) return; // nothing to delete
+  // The self-heal mirror restores events whenever the primary store is found empty. When the
+  // user deliberately deletes their LAST event the list really is empty, so drop the mirror too —
+  // otherwise that event comes back on the next launch. This is the only place the mirror is
+  // cleared, and only when exactly this one event was left.
+  if (next.length === 0 && !isVaultEnabled()) localStorage.removeItem(PEOPLE_MIRROR_KEY);
+  savePeople(next);
 };
 
 const makeDraftId = (): string => `draft-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -738,6 +787,24 @@ export const getDaysToEvent = (person: Person): number => {
   }
   return gd;
 };
+
+// Events ordered by how soon they occur: today first, then the nearest upcoming, with one-time
+// events that already passed at the very end. Ties are broken by name so the order is stable.
+// Days are computed once per event (the comparison must never see NaN, which would make the
+// whole sort inconsistent).
+export const sortByUpcoming = (people: Person[]): Person[] =>
+  people
+    .map(person => {
+      const days = getDaysToEvent(person);
+      return { person, days: Number.isFinite(days) && days >= 0 ? days : Infinity };
+    })
+    .sort((a, b) => {
+      if (a.days !== b.days) return a.days < b.days ? -1 : 1;
+      const nameA = `${a.person.firstName} ${a.person.lastName || ''}`;
+      const nameB = `${b.person.firstName} ${b.person.lastName || ''}`;
+      return nameA.localeCompare(nameB, 'he');
+    })
+    .map(entry => entry.person);
 
 // Check if an event is happening today
 export const isEventToday = (person: Person): boolean => {

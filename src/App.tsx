@@ -34,6 +34,9 @@ import {
 import type { Person, AppSettings, GreetingDraft, QuickDraft } from './services/storage';
 import {
   getPeople,
+  getGoogleToken,
+  saveGoogleToken,
+  sortByUpcoming,
   addPerson,
   updatePerson,
   deletePerson,
@@ -304,7 +307,7 @@ export default function App() {
 
     // Restore a saved OAuth access token so the Google connection persists across
     // restarts (the token is short-lived ~1h; on expiry we prompt an inline re-login).
-    const savedToken = localStorage.getItem('birthday_greetings_google_token');
+    const savedToken = getGoogleToken();
     if (savedToken) setGoogleAccessToken(savedToken);
   }, []);
 
@@ -461,7 +464,7 @@ export default function App() {
 
         // Persist the access token for this session so we can call Calendar/People APIs.
         setGoogleAccessToken(tokenResponse.access_token);
-        localStorage.setItem('birthday_greetings_google_token', tokenResponse.access_token);
+        saveGoogleToken(tokenResponse.access_token);
 
         const updatedSettings = {
           ...settings,
@@ -495,7 +498,7 @@ export default function App() {
         const result = await GoogleSignIn.signIn();
         if (result.accessToken) {
           setGoogleAccessToken(result.accessToken);
-          localStorage.setItem('birthday_greetings_google_token', result.accessToken);
+          saveGoogleToken(result.accessToken);
         }
         const updatedSettings = {
           ...settings,
@@ -541,14 +544,14 @@ export default function App() {
     saveSettings(updatedSettings);
     localStorage.removeItem('birthday_greetings_google_auth_active');
     setGoogleAccessToken(null);
-    localStorage.removeItem('birthday_greetings_google_token');
+    saveGoogleToken(null);
   };
 
   // If a Google fetch failed because the token expired, drop it so the UI can prompt reconnect.
   const handleGoogleFetchError = (err: unknown) => {
     if (err instanceof GoogleApiError && err.status === 401) {
       setGoogleAccessToken(null);
-      localStorage.removeItem('birthday_greetings_google_token');
+      saveGoogleToken(null);
     }
   };
 
@@ -689,6 +692,7 @@ export default function App() {
       refreshPeopleList();
       setQuickDrafts(getQuickDrafts());
       setLocalSettings(getSettings());
+      setGoogleAccessToken(getGoogleToken());
     } else {
       setUnlockError('סיסמה שגויה. נסה/י שוב.');
     }
@@ -708,6 +712,7 @@ export default function App() {
       refreshPeopleList();
       setQuickDrafts(getQuickDrafts());
       setLocalSettings(getSettings());
+      setGoogleAccessToken(getGoogleToken());
     } else {
       setUnlockError('האימות הצליח אך פתיחת הנתונים נכשלה.');
     }
@@ -1308,25 +1313,17 @@ export default function App() {
   };
 
   // Filtering people list
-  const filteredPeople = people
-    .filter(person => {
-      const query = searchQuery.toLowerCase();
-      const fullName = `${person.firstName} ${person.lastName || ''}`.toLowerCase();
-      return (
-        fullName.includes(query) ||
-        person.relation.toLowerCase().includes(query) ||
-        person.occasion.toLowerCase().includes(query) ||
-        (person.notes && person.notes.toLowerCase().includes(query))
-      );
-    })
-    .sort((a, b) => {
-      const daysA = getDaysToEvent(a);
-      const daysB = getDaysToEvent(b);
-      // Put past one-time events at the end (days === -1)
-      if (daysA === -1 && daysB !== -1) return 1;
-      if (daysB === -1 && daysA !== -1) return -1;
-      return daysA - daysB;
-    });
+  // Upcoming first: today's events on top, then the nearest ones; past one-time events last.
+  const filteredPeople = sortByUpcoming(people.filter(person => {
+    const query = searchQuery.toLowerCase();
+    const fullName = `${person.firstName} ${person.lastName || ''}`.toLowerCase();
+    return (
+      fullName.includes(query) ||
+      person.relation.toLowerCase().includes(query) ||
+      person.occasion.toLowerCase().includes(query) ||
+      (!!person.notes && person.notes.toLowerCase().includes(query))
+    );
+  }));
 
   // Find today's occasions
   const todaysOccasions = people.filter(p => isEventToday(p));

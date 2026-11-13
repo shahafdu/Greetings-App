@@ -13,9 +13,11 @@ APK** (via Capacitor — not yet scaffolded). It must work on both web and Andro
 ```bash
 npm run dev      # Vite dev server at http://localhost:5173/  (usually already running in background)
 npm run build    # tsc -b && vite build  — ALWAYS run this to verify before committing
+npm test         # vitest unit tests (tests/) — ALWAYS run before committing; CI runs them too
 npm run lint     # eslint (optional)
 ```
-There are **no automated tests**. Verify by building + manual check in the browser.
+Tests in `tests/` cover storage / App Lock, dates + list order, share-file import and the Worker.
+Add a test when you touch that logic. UI changes still need a manual check in the browser.
 
 **Android (Capacitor, scaffolded 2026-06-28):**
 ```bash
@@ -24,6 +26,9 @@ npm run android:open   # open the project in Android Studio (owner builds/runs t
 npm run android:icons  # regenerate launcher icons/splash from assets/icon.png (1024x1024)
 ```
 App id `com.shahaf.greetings`. Building the APK needs **Android Studio + SDK** (owner's machine).
+**Release builds require the release signing key** (`-PRELEASE_STORE_FILE` … — CI passes it from
+GitHub Secrets) and fail without it; they are never signed with the committed debug keystore.
+Debug builds are unaffected.
 `npm install` of Capacitor packages floods output and can crash the Bash tool — run such installs
 with `run_in_background: true`.
 
@@ -52,7 +57,9 @@ with `run_in_background: true`.
   twice via storage bugs — be extremely careful with `storage.ts`. Safeguards now in place:
   in-memory cache, a **self-healing mirror** (`birthday_greetings_people_mirror`), and `persist()`
   that never writes empty/plaintext-when-locked. **Never** seed defaults over existing data; never
-  write `[]`. There is intentionally **no plaintext JSON export** (security).
+  write `[]`. The mirror is cleared in exactly one place: `deletePerson`, when the user deletes
+  their last event (so it doesn't come back). There is intentionally **no plaintext JSON export**
+  (security).
 - **Dates:** never `new Date('YYYY-MM-DD')` (parses as UTC → a day early west of UTC). Use
   `parseLocalDate`, and `gregorianOccursOn` / `nextGregorianOccurrence` from `storage.ts` — the one
   source of truth for "is it today", the calendar grid and notifications.
@@ -64,7 +71,9 @@ with `run_in_background: true`.
 - **Google OAuth `CLIENT_ID` in `main.tsx` is public** (fine to commit). Real keys/contacts/events
   are **never** committed — `greetings-backup-*.json` is gitignored.
 - **localStorage keys:** `birthday_greetings_` + `people`, `settings`, `people_mirror`, `vault_data`,
-  `vault_meta`, `google_token`, `google_auth_active`, `restore_done`.
+  `vault_meta`, `google_token`, `google_auth_active`, `restore_done`. Read/write the Google token
+  only via `getGoogleToken` / `saveGoogleToken` — with the App Lock on it lives inside the
+  encrypted blob, not in its plain key.
 
 ## Git workflow
 Branch off `main`, build to verify, commit, then fast-forward merge to `main` and push (the owner
